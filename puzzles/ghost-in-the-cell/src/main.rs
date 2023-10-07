@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::io;
 
+//test
+
 #[allow(unused_variables)]
 
 //
@@ -209,7 +211,7 @@ fn main() {
         // Any valid action, such as "WAIT" or "MOVE source destination cyborgs"
         //println!("WAIT");
 
-        do_turn(&mut factories, &mut troops);
+        //do_turn(&mut factories, &mut troops);
     }
 }
 
@@ -220,6 +222,11 @@ fn do_turn(factories: &mut HashMap<i32, Factory>, troops: &mut Vec<Troop>) {
     // WAIT: does nothing.
     // If you try to move more cyborgs that there are in the source factory, then all the available units will be sent.
 
-    //get list of target factories sorted by production
-    factories.
+    //get vec of target factories sorted by production in descending order
+    let mut target_factories: Vec<Factory> = factories.values().cloned().collect();
+    target_factories.sort_by();
+
+    let x = |a: i32, b: String| println!("test");
+
+    return;
 }

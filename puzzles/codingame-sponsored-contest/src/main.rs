@@ -39,21 +39,21 @@ fn main() {
     let second_init_input = parse_input!(input_line, i32);
     let mut input_line = String::new();
     io::stdin().read_line(&mut input_line).unwrap();
-    let num_characters = parse_input!(input_line, i32);
+    let cg_num_characters = parse_input!(input_line, i32);
 
     let init_data = InitData {
-        first_init_input,
-        second_init_input,
-        num_integer_pairs_per_turn: num_characters, //the number of characters, one of which is the player
+        _first_init_input: first_init_input,
+        _second_init_input: second_init_input,
+        _num_integer_pairs_per_turn: cg_num_characters, //the number of characters, one of which is the player
     };
 
     let mut characters: Vec<Character> = Vec::new();
-    for _ in 0..num_characters {
+    for _ in 0..cg_num_characters {
         characters.push(Character::new());
     }
     //eprintln!("characters: {characters:#?}"); //dump the characters
 
-    let mut turnData: Vec<TurnIO> = Vec::new();
+    let mut turn_data: Vec<TurnIO> = Vec::new();
 
     eprintln!("initData: {:?}", init_data);
 
@@ -61,11 +61,11 @@ fn main() {
 
     //Figure out what the commands are
     let commands = MoveCommands {
-        Up: '?',
-        Down: '?',
-        Left: '?',
-        Right: '?',
-        StayPut: 'B',
+        up: '?',
+        down: '?',
+        left: '?',
+        right: '?',
+        stay_put: 'B',
     };
     //     'A', // moves player somehow?
     //     'B', // hold still
@@ -84,7 +84,7 @@ fn main() {
     // }
 
     //Make a sequence of test commands
-    let test_cmds = vec![commands.StayPut];
+    let test_cmds = vec![commands.stay_put];
 
     // let test_cmds: Vec<&str> = test_cmds_string
     //     .char_indices()
@@ -113,15 +113,16 @@ fn main() {
         let char4 = input_line.trim_matches('\n').to_string();
 
         //process the character positions
-        for i in 0..num_characters as usize {
+        //for i in 0..cg_num_characters as usize {
+        for character in characters.iter_mut() {
             let mut input_line = String::new();
             io::stdin().read_line(&mut input_line).unwrap();
-            let inputs = input_line.split(" ").collect::<Vec<_>>();
+            let inputs = input_line.split(' ').collect::<Vec<_>>();
             let character_pos_x = parse_input!(inputs[0], i32);
             let character_pos_y = parse_input!(inputs[1], i32);
             //eprintln!("{} {}", fifth_input, sixth_input);
 
-            characters[i].set_pos(vec![character_pos_x, character_pos_y].into());
+            character.set_pos(vec![character_pos_x, character_pos_y].into());
 
             // turnData[turn as usize]
             //     .int_pairs
@@ -131,7 +132,7 @@ fn main() {
         //dump characters
         //eprintln!("characters: {characters:#?}");
 
-        turnData.push(TurnIO {
+        turn_data.push(TurnIO {
             turn,
             cmd: last_cmd.to_string(),
             char1,
@@ -142,12 +143,13 @@ fn main() {
         });
 
         //dump turn data (last 10)
-        let i_start: usize = match turnData.len() {
+        let i_start: usize = match turn_data.len() {
             x if x < 10 => 0,
             x => x - 10,
         };
-        for i in i_start..turnData.len() {
-            eprintln!("{:?}", turnData[i].to_string());
+        for td in turn_data.iter().skip(i_start) {
+            //i_start..turn_data.len() {
+            eprintln!("{:?}", td.to_string());
         }
         //eprintln!("turnData: {:#?}", turnData);
 
@@ -160,9 +162,9 @@ fn main() {
         // Increment turn
         turn += 1;
 
-        if turn > commands.len() {
-            break;
-        }
+        // if turn > commands.len() {
+        //     break;
+        // }
     }
 }
 #[derive(Debug)]
@@ -176,14 +178,16 @@ struct TurnIO {
     characters: Vec<Character>,
 }
 
-impl TurnIO {
-    fn to_string(&self) -> String {
+use std::fmt;
+
+impl fmt::Display for TurnIO {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut s = String::new();
         s.push_str(format!["{:>3?}", &self.turn].as_str());
-        s.push_str(" ");
+        s.push(' ');
         s.push_str(&self.cmd);
         //s.push_str(format!["/{:>3?}", &self.cmd.as_bytes()[0]].as_str());
-        s.push_str(" ");
+        s.push(' ');
         s.push_str(&self.char1);
         s.push_str(&self.char2);
         s.push_str(&self.char3);
@@ -212,78 +216,80 @@ impl TurnIO {
             let character_string = format![
                 "[c{}{}{}({:>2},{:>2})]",
                 i,
-                if c.has_ever_moved { "$" } else { " " },
+                if c._has_ever_moved { "$" } else { " " },
                 if c.position_changed() { "!" } else { " " },
-                c.position.as_ref().unwrap()[0],
-                c.position.as_ref().unwrap()[1],
+                c._position.as_ref().unwrap()[0],
+                c._position.as_ref().unwrap()[1],
             ];
             s.push_str(&character_string);
         }
 
-        s
+        write!(f, "{s}")
     }
 }
 
 #[derive(Debug)]
 struct InitData {
-    first_init_input: i32,
-    second_init_input: i32,
-    num_integer_pairs_per_turn: i32,
+    _first_init_input: i32,
+    _second_init_input: i32,
+    _num_integer_pairs_per_turn: i32,
 }
 
 #[derive(Debug, Clone)]
 struct Character {
-    last_position: Option<Vec<i32>>,
-    position: Option<Vec<i32>>,
-    has_ever_moved: bool,
-    letter: char,
+    _last_position: Option<Vec<i32>>,
+    _position: Option<Vec<i32>>,
+    _has_ever_moved: bool,
+    _letter: char,
 }
 
 impl Character {
     fn new() -> Self {
         Character {
-            last_position: None,
-            position: None,
-            has_ever_moved: false,
-            letter: '-',
+            _last_position: None,
+            _position: None,
+            _has_ever_moved: false,
+            _letter: '-',
         }
     }
 
     fn set_pos(&mut self, position: Option<Vec<i32>>) {
         //first set last_position
-        self.last_position = match &self.position {
+        self._last_position = match &self._position {
             None => None,
-            Some(_) => self.position.clone(),
+            Some(_) => self._position.clone(),
         };
 
         //then set position
-        self.position = match position {
+        self._position = match position {
             None => None,
-            Some(ref p) => position,
+            Some(_) => position,
         };
 
         if self.position_changed() {
-            self.has_ever_moved = true;
+            self._has_ever_moved = true;
         }
     }
 
     fn position_changed(&self) -> bool {
-        if self.last_position == None {
+        if self._last_position.is_none() {
             return false;
         }
 
-        self.position != self.last_position
+        self._position != self._last_position
     }
 }
 
+#[allow(dead_code)]
 struct MoveCommands {
-    Up: char,
-    Down: char,
-    Left: char,
-    Right: char,
-    StayPut: char,
+    up: char,
+    down: char,
+    left: char,
+    right: char,
+    stay_put: char,
 }
 
+#[allow(dead_code)]
 struct GameBoard {
     width: usize,
     height: usize,
@@ -295,7 +301,7 @@ struct GameBoard {
 }
 
 impl GameBoard {
-    fn drawBoard(&self) {
+    fn _draw_board(&self, characters: &Vec<Character>) {
         for i in 0..self.width {
             for j in 0..self.height {}
         }

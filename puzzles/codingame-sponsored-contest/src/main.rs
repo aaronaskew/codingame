@@ -10,7 +10,7 @@ static TEST_SETTINGS: TestSettings = TestSettings {
 };
 
 //Figure out what the commands are
-static COMMANDS: MoveCommands = MoveCommands {
+static COMMANDS: MoveCommand = MoveCommand {
     up: 'C',
     down: 'D',
     left: 'E',
@@ -66,9 +66,9 @@ fn main() {
     };
 
     // create characters vector
-    let mut characters: Vec<Character> = Vec::new();
+    let mut characters: Vec<CharacterStruct> = Vec::new();
     for _ in 0..cg_num_characters {
-        characters.push(Character::new());
+        characters.push(CharacterStruct::new());
     }
     // set Characters' display char
     characters
@@ -76,12 +76,18 @@ fn main() {
         .enumerate()
         .for_each(|(i, character)| {
             character._letter = match i {
-                0 => 'α',
-                1 => 'β',
-                2 => 'γ',
-                3 => 'δ',
-                4 => 'ε',
+                0 => '^',
+                1 => '^',
+                2 => '^',
+                3 => '^',
+                4 => '©',
                 _ => '№',
+                // 0 => 'α',
+                // 1 => 'β',
+                // 2 => 'γ',
+                // 3 => 'δ',
+                // 4 => 'ε',
+                // _ => '№',
             };
         });
 
@@ -224,7 +230,7 @@ struct TurnIO {
     turn: usize,
     cmd: String,
     walls: Walls,
-    characters: Vec<Character>,
+    characters: Vec<CharacterStruct>,
 }
 
 use std::fmt;
@@ -301,16 +307,16 @@ struct InitData {
 }
 
 #[derive(Debug, Clone)]
-struct Character {
+struct CharacterStruct {
     _last_position: Option<Vec<i32>>,
     _position: Option<Vec<i32>>,
     _has_ever_moved: bool,
     _letter: char,
 }
 
-impl Character {
+impl CharacterStruct {
     fn new() -> Self {
-        Character {
+        CharacterStruct {
             _last_position: None,
             _position: None,
             _has_ever_moved: false,
@@ -346,7 +352,7 @@ impl Character {
 }
 
 #[allow(dead_code)]
-struct MoveCommands {
+struct MoveCommand {
     up: char,
     down: char,
     left: char,
@@ -386,7 +392,7 @@ impl GameBoard {
     /// \/
     ///
 
-    fn draw_board(&mut self, characters: &[Character], walls: &Walls) {
+    fn draw_board(&mut self, characters: &[CharacterStruct], walls: &Walls) {
         // access (i,j) in 1-D array with:
         //   i * cols + j
         //     where i=row & j=col
@@ -507,4 +513,91 @@ struct Walls {
     right: Wall,
     below: Wall,
     left: Wall,
+}
+
+// struct Player {}
+
+// impl
+
+// struct Enemy {}
+
+trait Character {
+    fn set_pos(&mut self, position: Option<Vec<i32>>);
+    fn get_pos(&self) -> Option<Vec<i32>>;
+    fn get_letter(&self) -> char;
+    fn position_changed(&self) -> bool;
+}
+
+trait Player: Character {
+    /// This needs access to the `gameboard` and the `enemies`
+    /// to determine the next move
+    ///
+    fn get_next_move<F>(
+        &self,
+        gameboard: &GameBoard,
+        enemies: Vec<&dyn Enemy>,
+        algorithm: F,
+    ) -> MoveCommand
+    where
+        F: Fn(&Self, &GameBoard, Vec<&dyn Enemy>) -> MoveCommand;
+}
+
+trait Enemy: Character {}
+
+struct PacMan {
+    _last_position: Option<Vec<i32>>,
+    _position: Option<Vec<i32>>,
+    _has_ever_moved: bool,
+    _letter: char,
+}
+
+impl Character for PacMan {
+    fn set_pos(&mut self, position: Option<Vec<i32>>) {
+        match position {
+            None => (),
+            Some(_) => {
+                //first set last_position
+                self._last_position = match &self._position {
+                    None => None,
+                    Some(_) => self._position.clone(),
+                };
+
+                //then set position
+                self._position = match position {
+                    None => None,
+                    Some(_) => position,
+                };
+            }
+        };
+    }
+
+    fn get_pos(&self) -> Option<Vec<i32>> {
+        self._position.clone()
+    }
+
+    fn get_letter(&self) -> char {
+        self._letter
+    }
+
+    fn position_changed(&self) -> bool {
+        if self._last_position.is_none() {
+            return false;
+        }
+
+        self._position != self._last_position
+    }
+}
+
+impl Player for PacMan {
+    fn get_next_move<F>(
+        &self,
+        gameboard: &GameBoard,
+        enemies: Vec<&dyn Enemy>,
+        algorithm: F,
+    ) -> MoveCommand
+    where
+        F: Fn(&Self, &GameBoard, Vec<&dyn Enemy>) -> MoveCommand,
+    {
+        algorithm(self, gameboard, enemies)
+    }
 }

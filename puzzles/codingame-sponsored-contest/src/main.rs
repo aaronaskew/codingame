@@ -3,14 +3,17 @@ use std::io;
 static TEST_SETTINGS: TestSettings = TestSettings {
     gameboard_rows: 30,
     gameboard_cols: 30,
-    test_commands: ['C'],
+    gameboard_unexplored_char: '_',
+    gameboard_explored_char: ' ',
+    gameboard_wall_char: '#',
+    test_commands: [COMMANDS.right, COMMANDS.right, COMMANDS.right],
 };
 
 //Figure out what the commands are
 static COMMANDS: MoveCommands = MoveCommands {
-    up: '?',
-    down: '?',
-    left: '?',
+    up: 'C',
+    down: 'D',
+    left: 'E',
     right: 'A',
     stay_put: 'B',
 };
@@ -91,7 +94,7 @@ fn main() {
     let mut turn: usize = 0;
 
     //build game board for visualization
-    let gameboard = GameBoard::new(TEST_SETTINGS.gameboard_cols, TEST_SETTINGS.gameboard_rows);
+    let mut gameboard = GameBoard::new(TEST_SETTINGS.gameboard_cols, TEST_SETTINGS.gameboard_rows);
 
     let mut last_cmd = 'x';
 
@@ -124,18 +127,19 @@ fn main() {
     // game loop
     loop {
         eprintln!("begin turn: {}", turn);
+
         let mut input_line = String::new();
         io::stdin().read_line(&mut input_line).unwrap();
-        let char1 = input_line.trim_matches('\n').to_string();
+        let wall0 = input_line.trim_matches('\n').to_string();
         let mut input_line = String::new();
         io::stdin().read_line(&mut input_line).unwrap();
-        let char2 = input_line.trim_matches('\n').to_string();
+        let wall1 = input_line.trim_matches('\n').to_string();
         let mut input_line = String::new();
         io::stdin().read_line(&mut input_line).unwrap();
-        let char3 = input_line.trim_matches('\n').to_string();
+        let wall2 = input_line.trim_matches('\n').to_string();
         let mut input_line = String::new();
         io::stdin().read_line(&mut input_line).unwrap();
-        let char4 = input_line.trim_matches('\n').to_string();
+        let wall3 = input_line.trim_matches('\n').to_string();
 
         //process the character positions
         //for i in 0..cg_num_characters as usize {
@@ -157,13 +161,30 @@ fn main() {
         //dump characters
         //eprintln!("characters: {characters:#?}");
 
+        // create walls variable
+        let walls = Walls {
+            above: match &wall0[..] {
+                "#" => Wall::Wall,
+                _ => Wall::NoWall,
+            },
+            right: match &wall1[..] {
+                "#" => Wall::Wall,
+                _ => Wall::NoWall,
+            },
+            below: match &wall2[..] {
+                "#" => Wall::Wall,
+                _ => Wall::NoWall,
+            },
+            left: match &wall3[..] {
+                "#" => Wall::Wall,
+                _ => Wall::NoWall,
+            },
+        };
+
         turn_data.push(TurnIO {
             turn,
             cmd: last_cmd.to_string(),
-            char1,
-            char2,
-            char3,
-            char4,
+            walls: walls.clone(),
             characters: characters.clone(),
         });
 
@@ -188,7 +209,7 @@ fn main() {
         println!("{}", last_cmd);
 
         //print gameboard
-        gameboard._draw_board(&characters);
+        gameboard.draw_board(&characters, &walls);
         eprintln!("end turn: {}", turn);
         // Increment turn
         turn += 1;
@@ -202,10 +223,7 @@ fn main() {
 struct TurnIO {
     turn: usize,
     cmd: String,
-    char1: String,
-    char2: String,
-    char3: String,
-    char4: String,
+    walls: Walls,
     characters: Vec<Character>,
 }
 
@@ -219,10 +237,26 @@ impl fmt::Display for TurnIO {
         s.push_str(&self.cmd);
         //s.push_str(format!["/{:>3?}", &self.cmd.as_bytes()[0]].as_str());
         s.push(' ');
-        s.push_str(&self.char1);
-        s.push_str(&self.char2);
-        s.push_str(&self.char3);
-        s.push_str(&self.char4);
+        s.push_str(match self.walls.above {
+            Wall::Wall => "↑",
+            Wall::NoWall => "_",
+        });
+        s.push_str(match self.walls.below {
+            Wall::Wall => "↓",
+            Wall::NoWall => "_",
+        });
+        s.push_str(match self.walls.left {
+            Wall::Wall => "←",
+            Wall::NoWall => "_",
+        });
+        s.push_str(match self.walls.right {
+            Wall::Wall => "→",
+            Wall::NoWall => "_",
+        });
+        // s.push_str(&self.wall1);
+        // s.push_str(&self.wall2);
+        // s.push_str(&self.wall3);
+        // s.push_str(&self.wall4);
         //conv 4 char pattern from binary to decimal
         // s.push_str({
         //     let mut binary_string = String::new();
@@ -243,10 +277,10 @@ impl fmt::Display for TurnIO {
         // }
 
         //print character data
-        for (i, c) in self.characters.iter().enumerate() {
+        for c in self.characters.iter() {
             let character_string = format![
-                "[c{}{}{}({:>2},{:>2})]",
-                i,
+                "[{}{}{}({:>2},{:>2})]",
+                c._letter,
                 if c._has_ever_moved { "$" } else { " " },
                 if c.position_changed() { "!" } else { " " },
                 c._position.as_ref().unwrap()[0],
@@ -324,13 +358,19 @@ struct MoveCommands {
 struct GameBoard {
     columns: usize,
     rows: usize,
+    board: Vec<char>,
     // don't store characters. will retrieve reference on every draw
     // characters: &'static [Character],
 }
 
 impl GameBoard {
     fn new(columns: usize, rows: usize) -> Self {
-        GameBoard { columns, rows }
+        GameBoard {
+            columns,
+            rows,
+            //initialize board with blanks
+            board: vec![TEST_SETTINGS.gameboard_unexplored_char; (columns) * (rows)],
+        }
     }
 
     /// draws the gameboard as ascii art
@@ -346,13 +386,10 @@ impl GameBoard {
     /// \/
     ///
 
-    fn _draw_board(&self, characters: &[Character]) {
+    fn draw_board(&mut self, characters: &[Character], walls: &Walls) {
         // access (i,j) in 1-D array with:
         //   i * cols + j
         //     where i=row & j=col
-
-        //initialize board with blanks
-        let mut board = vec!['_'; (self.columns) * (self.rows)];
 
         // add the characters to the board
         for character in characters.iter() {
@@ -364,15 +401,72 @@ impl GameBoard {
                     col = pos[0] as usize;
                     row = pos[1] as usize;
 
-                    board[row * self.columns + col] = character._letter;
+                    self.board[row * self.columns + col] = character._letter;
+                }
+                None => (),
+            }
+
+            // if character's last position != current position, then set the last position to explored
+            match &character._last_position {
+                Some(last_pos) => {
+                    if last_pos != character._position.as_ref().unwrap() {
+                        let last_row = last_pos[1] as usize;
+                        let last_col = last_pos[0] as usize;
+                        self.board[last_row * self.columns + last_col] =
+                            TEST_SETTINGS.gameboard_explored_char;
+                    }
                 }
                 None => (),
             }
         }
 
+        let player = &characters[4];
+
+        //add the walls to the board
+        match walls.above {
+            Wall::Wall => {
+                let mut wall_pos = player._position.as_ref().unwrap().clone();
+                wall_pos[1] -= 1;
+                let row = wall_pos[1] as usize;
+                let col = wall_pos[0] as usize;
+                self.board[row * self.columns + col] = TEST_SETTINGS.gameboard_wall_char;
+            }
+            Wall::NoWall => (),
+        };
+        match walls.below {
+            Wall::Wall => {
+                let mut wall_pos = player._position.as_ref().unwrap().clone();
+                wall_pos[1] += 1;
+                let row = wall_pos[1] as usize;
+                let col = wall_pos[0] as usize;
+                self.board[row * self.columns + col] = TEST_SETTINGS.gameboard_wall_char;
+            }
+            Wall::NoWall => (),
+        };
+        match walls.left {
+            Wall::Wall => {
+                let mut wall_pos = player._position.as_ref().unwrap().clone();
+                wall_pos[0] -= 1;
+                let row = wall_pos[1] as usize;
+                let col = wall_pos[0] as usize;
+                self.board[row * self.columns + col] = TEST_SETTINGS.gameboard_wall_char;
+            }
+            Wall::NoWall => (),
+        };
+        match walls.right {
+            Wall::Wall => {
+                let mut wall_pos = player._position.as_ref().unwrap().clone();
+                wall_pos[0] += 1;
+                let row = wall_pos[1] as usize;
+                let col = wall_pos[0] as usize;
+                self.board[row * self.columns + col] = TEST_SETTINGS.gameboard_wall_char;
+            }
+            Wall::NoWall => (),
+        };
+
         //build board string and print
         let mut board_string = String::new();
-        board.iter().enumerate().for_each(|(i, c)| {
+        self.board.iter().enumerate().for_each(|(i, c)| {
             board_string.push(*c);
 
             // eprintln!(
@@ -395,5 +489,22 @@ impl GameBoard {
 struct TestSettings {
     gameboard_rows: usize,
     gameboard_cols: usize,
-    test_commands: [char; 1],
+    test_commands: [char; 3],
+    gameboard_unexplored_char: char,
+    gameboard_explored_char: char,
+    gameboard_wall_char: char,
+}
+
+#[derive(Debug, Clone)]
+enum Wall {
+    Wall,
+    NoWall,
+}
+
+#[derive(Debug, Clone)]
+struct Walls {
+    above: Wall,
+    right: Wall,
+    below: Wall,
+    left: Wall,
 }

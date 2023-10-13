@@ -1,5 +1,20 @@
 use std::io;
 
+static TEST_SETTINGS: TestSettings = TestSettings {
+    gameboard_rows: 30,
+    gameboard_cols: 30,
+    test_commands: ['C'],
+};
+
+//Figure out what the commands are
+static COMMANDS: MoveCommands = MoveCommands {
+    up: '?',
+    down: '?',
+    left: '?',
+    right: 'A',
+    stay_put: 'B',
+};
+
 macro_rules! parse_input {
     ($x:expr, $t:ident) => {
         $x.trim().parse::<$t>().unwrap()
@@ -47,10 +62,26 @@ fn main() {
         _num_integer_pairs_per_turn: cg_num_characters, //the number of characters, one of which is the player
     };
 
+    // create characters vector
     let mut characters: Vec<Character> = Vec::new();
     for _ in 0..cg_num_characters {
         characters.push(Character::new());
     }
+    // set Characters' display char
+    characters
+        .iter_mut()
+        .enumerate()
+        .for_each(|(i, character)| {
+            character._letter = match i {
+                0 => 'α',
+                1 => 'β',
+                2 => 'γ',
+                3 => 'δ',
+                4 => 'ε',
+                _ => '№',
+            };
+        });
+
     //eprintln!("characters: {characters:#?}"); //dump the characters
 
     let mut turn_data: Vec<TurnIO> = Vec::new();
@@ -59,19 +90,8 @@ fn main() {
 
     let mut turn: usize = 0;
 
-    //Figure out what the commands are
-    let commands = MoveCommands {
-        up: '?',
-        down: '?',
-        left: '?',
-        right: '?',
-        stay_put: 'B',
-    };
-    //     'A', // moves player somehow?
-    //     'B', // hold still
-    //     'C', // moves player somehow?
-    //     'D', // moves player somehow?
-    //     'E', // moves player somehow?
+    //build game board for visualization
+    let gameboard = GameBoard::new(TEST_SETTINGS.gameboard_cols, TEST_SETTINGS.gameboard_rows);
 
     let mut last_cmd = 'x';
 
@@ -84,7 +104,12 @@ fn main() {
     // }
 
     //Make a sequence of test commands
-    let test_cmds = vec![commands.stay_put];
+    // let test_cmds = vec![commands.stay_put];
+
+    // test the 'A' command
+    // let test_cmds = vec!['A'];
+
+    let test_cmds = TEST_SETTINGS.test_commands.to_vec();
 
     // let test_cmds: Vec<&str> = test_cmds_string
     //     .char_indices()
@@ -142,15 +167,19 @@ fn main() {
             characters: characters.clone(),
         });
 
-        //dump turn data (last 10)
-        let i_start: usize = match turn_data.len() {
-            x if x < 10 => 0,
-            x => x - 10,
-        };
-        for td in turn_data.iter().skip(i_start) {
-            //i_start..turn_data.len() {
-            eprintln!("{:?}", td.to_string());
-        }
+        // print single TurnIO instead of 10
+        eprintln!("{:?}", turn_data.last().unwrap().to_string());
+
+        // //dump turn data (last 10)
+        // let i_start: usize = match turn_data.len() {
+        //     x if x < 10 => 0,
+        //     x => x - 10,
+        // };
+        // for td in turn_data.iter().skip(i_start) {
+        //     //i_start..turn_data.len() {
+        //     eprintln!("{:?}", td.to_string());
+        // }
+
         //eprintln!("turnData: {:#?}", turnData);
 
         //Send next command
@@ -158,6 +187,8 @@ fn main() {
         //eprintln!("command: {}", last_cmd);
         println!("{}", last_cmd);
 
+        //print gameboard
+        gameboard._draw_board(&characters);
         eprintln!("end turn: {}", turn);
         // Increment turn
         turn += 1;
@@ -291,19 +322,78 @@ struct MoveCommands {
 
 #[allow(dead_code)]
 struct GameBoard {
-    width: usize,
-    height: usize,
-    char0: Character,
-    char1: Character,
-    char2: Character,
-    char3: Character,
-    char4: Character,
+    columns: usize,
+    rows: usize,
+    // don't store characters. will retrieve reference on every draw
+    // characters: &'static [Character],
 }
 
 impl GameBoard {
-    fn _draw_board(&self, characters: &Vec<Character>) {
-        for i in 0..self.width {
-            for j in 0..self.height {}
-        }
+    fn new(columns: usize, rows: usize) -> Self {
+        GameBoard { columns, rows }
     }
+
+    /// draws the gameboard as ascii art
+    ///
+    /// coordinate system is zero indexed
+    /// positive x is to the right
+    /// positive y is down
+    ///
+    /// +---x---->
+    /// |
+    /// y
+    /// |
+    /// \/
+    ///
+
+    fn _draw_board(&self, characters: &[Character]) {
+        // access (i,j) in 1-D array with:
+        //   i * cols + j
+        //     where i=row & j=col
+
+        //initialize board with blanks
+        let mut board = vec!['_'; (self.columns) * (self.rows)];
+
+        // add the characters to the board
+        for character in characters.iter() {
+            let row: usize;
+            let col: usize;
+
+            match &character._position {
+                Some(pos) => {
+                    col = pos[0] as usize;
+                    row = pos[1] as usize;
+
+                    board[row * self.columns + col] = character._letter;
+                }
+                None => (),
+            }
+        }
+
+        //build board string and print
+        let mut board_string = String::new();
+        board.iter().enumerate().for_each(|(i, c)| {
+            board_string.push(*c);
+
+            // eprintln!(
+            //     "i, columns, (i+1)%columns {}, {}, {}",
+            //     i,
+            //     self.columns,
+            //     (i + 1) % self.columns
+            // );
+
+            //if i is the last in a row, add a newline
+            if (i + 1) % self.columns == 0 {
+                board_string.push('\n');
+            }
+        });
+
+        eprint!("{}", board_string);
+    }
+}
+
+struct TestSettings {
+    gameboard_rows: usize,
+    gameboard_cols: usize,
+    test_commands: [char; 1],
 }

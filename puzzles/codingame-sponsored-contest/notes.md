@@ -12,16 +12,22 @@
 
 ## Things to do
 
-* [*] Codify the walls  
+* [ ] Implement game logic
+  * [ ] pathfinding (depth or breadth first search?)
+    * [ ] avoid ghosts
+    * [ ] assuming no power pellets
+    * [ ] test for screen wrapping (doubtful)
 
-* [*] Decipher commands--
+* [*] --Codify the walls--
+
+* [*] --Decipher commands--
   * up: 'C',
   * down: 'D',
   * left: 'E',
   * right: 'A',
   * stay_put: 'B',
 
-* [*] Decipher wall characters--
+* [*] --Decipher wall characters--
   * wall0 = above
   * wall1 = right
   * wall2 = below

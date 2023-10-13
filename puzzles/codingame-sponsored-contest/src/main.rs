@@ -76,18 +76,12 @@ fn main() {
         .enumerate()
         .for_each(|(i, character)| {
             character._letter = match i {
-                0 => '^',
-                1 => '^',
-                2 => '^',
-                3 => '^',
+                0 => 'α',
+                1 => 'β',
+                2 => 'γ',
+                3 => 'δ',
                 4 => '©',
                 _ => '№',
-                // 0 => 'α',
-                // 1 => 'β',
-                // 2 => 'γ',
-                // 3 => 'δ',
-                // 4 => 'ε',
-                // _ => '№',
             };
         });
 
@@ -540,6 +534,11 @@ trait Player: Character {
     ) -> MoveCommand
     where
         F: Fn(&Self, &GameBoard, Vec<&dyn Enemy>) -> MoveCommand;
+
+    fn can_move_up(&self, gameboard: &GameBoard) -> bool;
+    fn can_move_down(&self, gameboard: &GameBoard) -> bool;
+    fn can_move_left(&self, gameboard: &GameBoard) -> bool;
+    fn can_move_right(&self, gameboard: &GameBoard) -> bool;
 }
 
 trait Enemy: Character {}
@@ -599,5 +598,86 @@ impl Player for PacMan {
         F: Fn(&Self, &GameBoard, Vec<&dyn Enemy>) -> MoveCommand,
     {
         algorithm(self, gameboard, enemies)
+    }
+
+    fn can_move_up(&self, gameboard: &GameBoard) -> bool {
+        let pos = self.get_pos().unwrap();
+        let row = pos[1] as usize;
+        let col = pos[0] as usize;
+        let above_row = row - 1;
+        let above_col = col;
+        let _wall_char = TEST_SETTINGS.gameboard_wall_char;
+
+        matches!(
+            gameboard.board[above_row * gameboard.columns + above_col],
+            _wall_char
+        )
+    }
+
+    fn can_move_down(&self, gameboard: &GameBoard) -> bool {
+        let pos = self.get_pos().unwrap();
+        let row = pos[1] as usize;
+        let col = pos[0] as usize;
+        let below_row = row + 1;
+        let below_col = col;
+        let _wall_char = TEST_SETTINGS.gameboard_wall_char;
+
+        matches!(
+            gameboard.board[below_row * gameboard.columns + below_col],
+            _wall_char
+        )
+    }
+
+    fn can_move_left(&self, gameboard: &GameBoard) -> bool {
+        let pos = self.get_pos().unwrap();
+        let row = pos[1] as usize;
+        let col = pos[0] as usize;
+        let left_row = row;
+        let left_col = col - 1;
+        let _wall_char = TEST_SETTINGS.gameboard_wall_char;
+
+        matches!(
+            gameboard.board[left_row * gameboard.columns + left_col],
+            _wall_char
+        )
+    }
+
+    fn can_move_right(&self, gameboard: &GameBoard) -> bool {
+        let pos = self.get_pos().unwrap();
+        let row = pos[1] as usize;
+        let col = pos[0] as usize;
+        let right_row = row;
+        let right_col = col + 1;
+        let _wall_char = TEST_SETTINGS.gameboard_wall_char;
+
+        matches!(
+            gameboard.board[right_row * gameboard.columns + right_col],
+            _wall_char
+        )
+    }
+}
+
+impl PacMan {
+    fn new() -> Self {
+        PacMan {
+            _last_position: None,
+            _position: None,
+            _has_ever_moved: false,
+            _letter: '©',
+        }
+    }
+
+    fn dfs(&self, gameboard: &GameBoard) -> char {
+        if self.can_move_up(gameboard) {
+            COMMANDS.up
+        } else if self.can_move_down(gameboard) {
+            COMMANDS.down
+        } else if self.can_move_left(gameboard) {
+            COMMANDS.left
+        } else if self.can_move_right(gameboard) {
+            COMMANDS.right
+        } else {
+            COMMANDS.stay_put
+        }
     }
 }

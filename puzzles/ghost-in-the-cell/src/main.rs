@@ -1,9 +1,12 @@
+#![allow(clippy::all)]
+#![allow(unused)]
+
+
 use std::collections::HashMap;
 use std::io;
 
 //test
 
-#[allow(unused_variables)]
 
 //
 macro_rules! parse_input {
@@ -224,7 +227,9 @@ fn do_turn(factories: &mut HashMap<i32, Factory>, troops: &mut Vec<Troop>) {
 
     //get vec of target factories sorted by production in descending order
     let mut target_factories: Vec<Factory> = factories.values().cloned().collect();
-    target_factories.sort_by();
+    
+    // silencing this error for now
+    // target_factories.sort_by();
 
     let x = |a: i32, b: String| println!("test");
 

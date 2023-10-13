@@ -1,3 +1,6 @@
+#![allow(clippy::all)]
+#![allow(unused)]
+
 use std::io;
 
 macro_rules! parse_input {

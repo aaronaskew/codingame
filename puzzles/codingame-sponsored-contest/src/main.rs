@@ -1,3 +1,7 @@
+#![allow(unused)]
+
+use std::collections::HashMap;
+use std::hash::Hash;
 use std::io;
 
 static TEST_SETTINGS: TestSettings = TestSettings {
@@ -6,7 +10,8 @@ static TEST_SETTINGS: TestSettings = TestSettings {
     gameboard_unexplored_char: '_',
     gameboard_explored_char: ' ',
     gameboard_wall_char: '#',
-    test_commands: [COMMANDS.right, COMMANDS.right, COMMANDS.right],
+    //test_commands: [COMMANDS.right, COMMANDS.right, COMMANDS.right],
+    algorithm: "dfs_dumb",
 };
 
 //Figure out what the commands are
@@ -65,27 +70,19 @@ fn main() {
         _num_integer_pairs_per_turn: cg_num_characters, //the number of characters, one of which is the player
     };
 
-    // create characters vector
-    let mut characters: Vec<CharacterStruct> = Vec::new();
-    for _ in 0..cg_num_characters {
-        characters.push(CharacterStruct::new());
+    // create enemies vector
+    let mut enemies: Vec<Enemy> = Vec::new();
+    for i in 0..cg_num_characters - 1 {
+        enemies.push(Enemy::new(match i {
+            0 => 'α',
+            1 => 'β',
+            2 => 'γ',
+            3 => 'δ',
+            _ => '№',
+        }));
     }
-    // set Characters' display char
-    characters
-        .iter_mut()
-        .enumerate()
-        .for_each(|(i, character)| {
-            character._letter = match i {
-                0 => 'α',
-                1 => 'β',
-                2 => 'γ',
-                3 => 'δ',
-                4 => '©',
-                _ => '№',
-            };
-        });
 
-    //eprintln!("characters: {characters:#?}"); //dump the characters
+    let mut pacman = PacMan::new();
 
     let mut turn_data: Vec<TurnIO> = Vec::new();
 
@@ -96,33 +93,9 @@ fn main() {
     //build game board for visualization
     let mut gameboard = GameBoard::new(TEST_SETTINGS.gameboard_cols, TEST_SETTINGS.gameboard_rows);
 
-    let mut last_cmd = 'x';
-
-    // let mut test_cmds: Vec<&str> = Vec::new();
-    // {
-    //     let test_cmds_string = "B";
-    //     for cmd in test_cmds_string.split {
-    //         test_cmds.push(cmd);
-    //     }
-    // }
-
-    //Make a sequence of test commands
-    // let test_cmds = vec![commands.stay_put];
-
-    // test the 'A' command
-    // let test_cmds = vec!['A'];
-
-    let test_cmds = TEST_SETTINGS.test_commands.to_vec();
-
-    // let test_cmds: Vec<&str> = test_cmds_string
-    //     .char_indices()
-    //     .map(|(i, _)| {
-    //         let next_char_start = test_cmds_string[i..].chars().next().unwrap().len_utf8();
-    //         &test_cmds_string[i..i + next_char_start]
-    //     })
-    //     .collect();
-
-    let commands = test_cmds;
+    // let mut last_cmd = 'x';
+    // let test_cmds = TEST_SETTINGS.test_commands.to_vec();
+    // let commands = test_cmds;
 
     // game loop
     loop {
@@ -141,25 +114,24 @@ fn main() {
         io::stdin().read_line(&mut input_line).unwrap();
         let wall3 = input_line.trim_matches('\n').to_string();
 
-        //process the character positions
-        //for i in 0..cg_num_characters as usize {
-        for character in characters.iter_mut() {
+        //process the enemy positions
+        for enemy in enemies.iter_mut() {
             let mut input_line = String::new();
             io::stdin().read_line(&mut input_line).unwrap();
             let inputs = input_line.split(' ').collect::<Vec<_>>();
             let character_pos_x = parse_input!(inputs[0], i32);
             let character_pos_y = parse_input!(inputs[1], i32);
-            //eprintln!("{} {}", fifth_input, sixth_input);
 
-            character.set_pos(vec![character_pos_x, character_pos_y].into());
-
-            // turnData[turn as usize]
-            //     .int_pairs
-            //     .push((fifth_input, sixth_input));
+            enemy.set_pos(vec![character_pos_x, character_pos_y].into());
         }
 
-        //dump characters
-        //eprintln!("characters: {characters:#?}");
+        //process the pacman position
+        let mut input_line = String::new();
+        io::stdin().read_line(&mut input_line).unwrap();
+        let inputs = input_line.split(' ').collect::<Vec<_>>();
+        let character_pos_x = parse_input!(inputs[0], i32);
+        let character_pos_y = parse_input!(inputs[1], i32);
+        pacman.set_pos(vec![character_pos_x, character_pos_y].into());
 
         // create walls variable
         let walls = Walls {
@@ -183,9 +155,10 @@ fn main() {
 
         turn_data.push(TurnIO {
             turn,
-            cmd: last_cmd.to_string(),
+            cmd: pacman.last_command.to_string(),
             walls: walls.clone(),
-            characters: characters.clone(),
+            enemies: enemies.clone(),
+            pacman: pacman.clone(),
         });
 
         // print single TurnIO instead of 10
@@ -204,12 +177,32 @@ fn main() {
         //eprintln!("turnData: {:#?}", turnData);
 
         //Send next command
-        last_cmd = commands[turn % commands.len()];
+        //last_cmd = commands[turn % commands.len()];
         //eprintln!("command: {}", last_cmd);
-        println!("{}", last_cmd);
+        println!("{}", {
+            let cmd = pacman.get_next_move(
+                &gameboard,
+                &enemies,
+                pacman
+                    .algorithms
+                    .iter()
+                    .find(|a| a.name == TEST_SETTINGS.algorithm)
+                    .unwrap()
+                    .function,
+            );
+            pacman.last_command = match cmd {
+                'A' => '⇉',
+                'B' => '▣',
+                'C' => '⇈',
+                'D' => '⇊',
+                'E' => '⇇',
+                _ => panic!("invalid command"),
+            };
+            cmd
+        });
 
         //print gameboard
-        gameboard.draw_board(&characters, &walls);
+        gameboard.draw_board(&pacman, &enemies, &walls);
         eprintln!("end turn: {}", turn);
         // Increment turn
         turn += 1;
@@ -224,11 +217,11 @@ struct TurnIO {
     turn: usize,
     cmd: String,
     walls: Walls,
-    characters: Vec<CharacterStruct>,
+    enemies: Vec<Enemy>,
+    pacman: PacMan,
 }
 
 use std::fmt;
-
 impl fmt::Display for TurnIO {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut s = String::new();
@@ -277,7 +270,7 @@ impl fmt::Display for TurnIO {
         // }
 
         //print character data
-        for c in self.characters.iter() {
+        for c in self.enemies.iter() {
             let character_string = format![
                 "[{}{}{}({:>2},{:>2})]",
                 c._letter,
@@ -288,6 +281,24 @@ impl fmt::Display for TurnIO {
             ];
             s.push_str(&character_string);
         }
+
+        let pacman_string = format![
+            "[{}{}{}({:>2},{:>2})]",
+            self.pacman.get_letter(),
+            if self.pacman._has_ever_moved {
+                "$"
+            } else {
+                " "
+            },
+            if self.pacman.position_changed() {
+                "!"
+            } else {
+                " "
+            },
+            self.pacman._position.as_ref().unwrap()[0],
+            self.pacman._position.as_ref().unwrap()[1],
+        ];
+        s.push_str(&pacman_string);
 
         write!(f, "{s}")
     }
@@ -300,52 +311,8 @@ struct InitData {
     _num_integer_pairs_per_turn: i32,
 }
 
-#[derive(Debug, Clone)]
-struct CharacterStruct {
-    _last_position: Option<Vec<i32>>,
-    _position: Option<Vec<i32>>,
-    _has_ever_moved: bool,
-    _letter: char,
-}
-
-impl CharacterStruct {
-    fn new() -> Self {
-        CharacterStruct {
-            _last_position: None,
-            _position: None,
-            _has_ever_moved: false,
-            _letter: '-',
-        }
-    }
-
-    fn set_pos(&mut self, position: Option<Vec<i32>>) {
-        //first set last_position
-        self._last_position = match &self._position {
-            None => None,
-            Some(_) => self._position.clone(),
-        };
-
-        //then set position
-        self._position = match position {
-            None => None,
-            Some(_) => position,
-        };
-
-        if self.position_changed() {
-            self._has_ever_moved = true;
-        }
-    }
-
-    fn position_changed(&self) -> bool {
-        if self._last_position.is_none() {
-            return false;
-        }
-
-        self._position != self._last_position
-    }
-}
-
 #[allow(dead_code)]
+#[derive(Debug, Clone)]
 struct MoveCommand {
     up: char,
     down: char,
@@ -386,30 +353,30 @@ impl GameBoard {
     /// \/
     ///
 
-    fn draw_board(&mut self, characters: &[CharacterStruct], walls: &Walls) {
+    fn draw_board(&mut self, pacman: &PacMan, enemies: &[Enemy], walls: &Walls) {
         // access (i,j) in 1-D array with:
         //   i * cols + j
         //     where i=row & j=col
 
-        // add the characters to the board
-        for character in characters.iter() {
+        // add the enemies to the board
+        for enemy in enemies.iter() {
             let row: usize;
             let col: usize;
 
-            match &character._position {
+            match &enemy._position {
                 Some(pos) => {
                     col = pos[0] as usize;
                     row = pos[1] as usize;
 
-                    self.board[row * self.columns + col] = character._letter;
+                    self.board[row * self.columns + col] = enemy._letter;
                 }
                 None => (),
             }
 
             // if character's last position != current position, then set the last position to explored
-            match &character._last_position {
+            match &enemy._last_position {
                 Some(last_pos) => {
-                    if last_pos != character._position.as_ref().unwrap() {
+                    if last_pos != enemy._position.as_ref().unwrap() {
                         let last_row = last_pos[1] as usize;
                         let last_col = last_pos[0] as usize;
                         self.board[last_row * self.columns + last_col] =
@@ -420,12 +387,37 @@ impl GameBoard {
             }
         }
 
-        let player = &characters[4];
+        // add pacman to the board
+        let row: usize;
+        let col: usize;
+
+        match &pacman.get_pos() {
+            Some(pos) => {
+                col = pos[0] as usize;
+                row = pos[1] as usize;
+
+                self.board[row * self.columns + col] = pacman.get_letter();
+            }
+            None => (),
+        }
+
+        // if character's last position != current position, then set the last position to explored
+        match &pacman._last_position {
+            Some(last_pos) => {
+                if last_pos != pacman._position.as_ref().unwrap() {
+                    let last_row = last_pos[1] as usize;
+                    let last_col = last_pos[0] as usize;
+                    self.board[last_row * self.columns + last_col] =
+                        TEST_SETTINGS.gameboard_explored_char;
+                }
+            }
+            None => (),
+        }
 
         //add the walls to the board
         match walls.above {
             Wall::Wall => {
-                let mut wall_pos = player._position.as_ref().unwrap().clone();
+                let mut wall_pos = pacman.get_pos().as_ref().unwrap().clone();
                 wall_pos[1] -= 1;
                 let row = wall_pos[1] as usize;
                 let col = wall_pos[0] as usize;
@@ -435,7 +427,7 @@ impl GameBoard {
         };
         match walls.below {
             Wall::Wall => {
-                let mut wall_pos = player._position.as_ref().unwrap().clone();
+                let mut wall_pos = pacman.get_pos().as_ref().unwrap().clone();
                 wall_pos[1] += 1;
                 let row = wall_pos[1] as usize;
                 let col = wall_pos[0] as usize;
@@ -445,7 +437,7 @@ impl GameBoard {
         };
         match walls.left {
             Wall::Wall => {
-                let mut wall_pos = player._position.as_ref().unwrap().clone();
+                let mut wall_pos = pacman.get_pos().as_ref().unwrap().clone();
                 wall_pos[0] -= 1;
                 let row = wall_pos[1] as usize;
                 let col = wall_pos[0] as usize;
@@ -455,7 +447,7 @@ impl GameBoard {
         };
         match walls.right {
             Wall::Wall => {
-                let mut wall_pos = player._position.as_ref().unwrap().clone();
+                let mut wall_pos = pacman.get_pos().as_ref().unwrap().clone();
                 wall_pos[0] += 1;
                 let row = wall_pos[1] as usize;
                 let col = wall_pos[0] as usize;
@@ -489,10 +481,11 @@ impl GameBoard {
 struct TestSettings {
     gameboard_rows: usize,
     gameboard_cols: usize,
-    test_commands: [char; 3],
+    //test_commands: [char; 3],
     gameboard_unexplored_char: char,
     gameboard_explored_char: char,
     gameboard_wall_char: char,
+    algorithm: &'static str,
 }
 
 #[derive(Debug, Clone)]
@@ -526,30 +519,154 @@ trait Player: Character {
     /// This needs access to the `gameboard` and the `enemies`
     /// to determine the next move
     ///
-    fn get_next_move<F>(
-        &self,
-        gameboard: &GameBoard,
-        enemies: Vec<&dyn Enemy>,
-        algorithm: F,
-    ) -> MoveCommand
+    fn get_next_move<F>(&self, gameboard: &GameBoard, enemies: &[Enemy], algorithm: F) -> char
     where
-        F: Fn(&Self, &GameBoard, Vec<&dyn Enemy>) -> MoveCommand;
+        F: Fn(&Self, &GameBoard, &[Enemy]) -> char;
 
-    fn can_move_up(&self, gameboard: &GameBoard) -> bool;
-    fn can_move_down(&self, gameboard: &GameBoard) -> bool;
-    fn can_move_left(&self, gameboard: &GameBoard) -> bool;
-    fn can_move_right(&self, gameboard: &GameBoard) -> bool;
+    fn can_move_in_direction(&self, direction: Direction, gameboard: &GameBoard) -> bool;
 }
 
-trait Enemy: Character {}
-
-struct PacMan {
+#[derive(Debug, Clone)]
+struct Enemy {
     _last_position: Option<Vec<i32>>,
     _position: Option<Vec<i32>>,
     _has_ever_moved: bool,
     _letter: char,
 }
 
+impl Enemy {
+    fn new(letter: char) -> Self {
+        Enemy {
+            _last_position: None,
+            _position: None,
+            _has_ever_moved: false,
+            _letter: letter,
+        }
+    }
+}
+
+impl Character for Enemy {
+    fn set_pos(&mut self, position: Option<Vec<i32>>) {
+        match position {
+            None => (),
+            Some(_) => {
+                //first set last_position
+                self._last_position = match &self._position {
+                    None => None,
+                    Some(_) => self._position.clone(),
+                };
+
+                //then set position
+                self._position = match position {
+                    None => None,
+                    Some(_) => position,
+                };
+            }
+        };
+    }
+
+    fn get_pos(&self) -> Option<Vec<i32>> {
+        self._position.clone()
+    }
+
+    fn get_letter(&self) -> char {
+        self._letter
+    }
+
+    fn position_changed(&self) -> bool {
+        if self._last_position.is_none() {
+            return false;
+        }
+
+        self._position != self._last_position
+    }
+}
+
+#[derive(Debug, Clone)]
+struct PacMan {
+    _last_position: Option<Vec<i32>>,
+    _position: Option<Vec<i32>>,
+    _has_ever_moved: bool,
+    _letter: char,
+    algorithms: Vec<Algorithm>,
+    last_command: char,
+}
+impl PacMan {
+    fn new() -> Self {
+        PacMan {
+            _last_position: None,
+            _position: None,
+            _has_ever_moved: false,
+            _letter: '©',
+            algorithms: {
+                vec![Algorithm {
+                    name: "dfs_dumb",
+                    function: Self::dfs_dumb,
+                }]
+            },
+            last_command: 'x',
+        }
+    }
+
+    //#[allow(dead_code)]
+    fn dfs_dumb(&self, gameboard: &GameBoard, enemies: &[Enemy]) -> char {
+        // create a hashmap of explored directions
+        let mut explored_directions: HashMap<Direction, bool> = HashMap::new();
+        // check each direction for exploration
+        for direction in [
+            Direction::Up,
+            Direction::Down,
+            Direction::Left,
+            Direction::Right,
+        ] {
+            explored_directions.insert(direction, self.explored_in_direction(direction, gameboard));
+        }
+
+        eprintln!("explored_directions: {:?}", explored_directions);
+
+        if self.can_move_in_direction(Direction::Up, gameboard) && !explored_directions[&Direction::Up] {
+            return COMMANDS.up;
+        }
+
+        if self.can_move_in_direction(Direction::Down, gameboard)
+            && !explored_directions[&Direction::Down]
+        {
+            return COMMANDS.down;
+        }
+
+        if self.can_move_in_direction(Direction::Left, gameboard)
+            && !explored_directions[&Direction::Left]
+        {
+            return COMMANDS.left;
+        }
+
+        if self.can_move_in_direction(Direction::Right, gameboard)
+            && !explored_directions[&Direction::Right]
+        {
+            return COMMANDS.right;
+        }
+
+        // if we get here, we are stuck
+        COMMANDS.stay_put
+    }
+
+    fn explored_in_direction(&self, direction: Direction, gameboard: &GameBoard) -> bool {
+        let pos = self.get_pos().unwrap();
+        let row = pos[1] as usize;
+        let col = pos[0] as usize;
+        let _wall_char = TEST_SETTINGS.gameboard_wall_char;
+        let (test_row, test_col) = match direction {
+            Direction::Up => (row - 1, col),
+            Direction::Down => (row + 1, col),
+            Direction::Left => (row, col - 1),
+            Direction::Right => (row, col + 1),
+        };
+
+        let wall_test_char = gameboard.board[test_row * gameboard.columns + test_col];
+
+        wall_test_char == TEST_SETTINGS.gameboard_explored_char
+    }
+}
 impl Character for PacMan {
     fn set_pos(&mut self, position: Option<Vec<i32>>) {
         match position {
@@ -588,96 +705,69 @@ impl Character for PacMan {
 }
 
 impl Player for PacMan {
-    fn get_next_move<F>(
-        &self,
-        gameboard: &GameBoard,
-        enemies: Vec<&dyn Enemy>,
-        algorithm: F,
-    ) -> MoveCommand
+    fn get_next_move<F>(&self, gameboard: &GameBoard, enemies: &[Enemy], algorithm: F) -> char
     where
-        F: Fn(&Self, &GameBoard, Vec<&dyn Enemy>) -> MoveCommand,
+        F: Fn(&Self, &GameBoard, &[Enemy]) -> char,
     {
         algorithm(self, gameboard, enemies)
     }
 
-    fn can_move_up(&self, gameboard: &GameBoard) -> bool {
+    fn can_move_in_direction(&self, direction: Direction, gameboard: &GameBoard) -> bool {
         let pos = self.get_pos().unwrap();
         let row = pos[1] as usize;
         let col = pos[0] as usize;
-        let above_row = row - 1;
-        let above_col = col;
         let _wall_char = TEST_SETTINGS.gameboard_wall_char;
+        let (test_row, test_col) = match direction {
+            Direction::Up => (row - 1, col),
+            Direction::Down => (row + 1, col),
+            Direction::Left => (row, col - 1),
+            Direction::Right => (row, col + 1),
+        };
 
-        matches!(
-            gameboard.board[above_row * gameboard.columns + above_col],
-            _wall_char
-        )
-    }
+        let wall_test_char = gameboard.board[test_row * gameboard.columns + test_col];
 
-    fn can_move_down(&self, gameboard: &GameBoard) -> bool {
-        let pos = self.get_pos().unwrap();
-        let row = pos[1] as usize;
-        let col = pos[0] as usize;
-        let below_row = row + 1;
-        let below_col = col;
-        let _wall_char = TEST_SETTINGS.gameboard_wall_char;
+        // {
+        //     eprintln!(
+        //         "can_move_in_direction: {:?} {:?}, char_at: {}, _wall_char: {}, is_wall(using matches!): {}, is_wall(using ==): {}",
+        //         direction,
+        //         (test_row, test_col),
+        //         wall_test_char,
+        //         _wall_char,
+        //         matches!(
+        //             wall_test_char,
+        //             _wall_char
+        //         ),
+        //         wall_test_char == _wall_char
+        //     );
+        // }
 
-        matches!(
-            gameboard.board[below_row * gameboard.columns + below_col],
-            _wall_char
-        )
-    }
+        // test for wall
+        if _wall_char == wall_test_char {
+            eprintln!("wall in the way");
+            return false;
+        }
 
-    fn can_move_left(&self, gameboard: &GameBoard) -> bool {
-        let pos = self.get_pos().unwrap();
-        let row = pos[1] as usize;
-        let col = pos[0] as usize;
-        let left_row = row;
-        let left_col = col - 1;
-        let _wall_char = TEST_SETTINGS.gameboard_wall_char;
+        // test for enemy
+        if matches!(wall_test_char, 'α' | 'β' | 'γ' | 'δ') {
+            eprintln!("enemy in the way");
+            return false;
+        }
 
-        matches!(
-            gameboard.board[left_row * gameboard.columns + left_col],
-            _wall_char
-        )
-    }
-
-    fn can_move_right(&self, gameboard: &GameBoard) -> bool {
-        let pos = self.get_pos().unwrap();
-        let row = pos[1] as usize;
-        let col = pos[0] as usize;
-        let right_row = row;
-        let right_col = col + 1;
-        let _wall_char = TEST_SETTINGS.gameboard_wall_char;
-
-        matches!(
-            gameboard.board[right_row * gameboard.columns + right_col],
-            _wall_char
-        )
+        // else, can move
+        true
     }
 }
 
-impl PacMan {
-    fn new() -> Self {
-        PacMan {
-            _last_position: None,
-            _position: None,
-            _has_ever_moved: false,
-            _letter: '©',
-        }
-    }
+#[derive(Debug, Clone)]
+struct Algorithm {
+    name: &'static str,
+    function: fn(&PacMan, &GameBoard, &[Enemy]) -> char,
+}
 
-    fn dfs(&self, gameboard: &GameBoard) -> char {
-        if self.can_move_up(gameboard) {
-            COMMANDS.up
-        } else if self.can_move_down(gameboard) {
-            COMMANDS.down
-        } else if self.can_move_left(gameboard) {
-            COMMANDS.left
-        } else if self.can_move_right(gameboard) {
-            COMMANDS.right
-        } else {
-            COMMANDS.stay_put
-        }
-    }
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+enum Direction {
+    Up,
+    Down,
+    Left,
+    Right,
 }

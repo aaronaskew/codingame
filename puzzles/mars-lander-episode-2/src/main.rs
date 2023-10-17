@@ -66,7 +66,11 @@ impl Lander {
         let mut burn = Burn::new();
 
         // focus solely on the x-dimension for now
-        //
+
+        // get the needed acceleration
+        let a = Self::accel(self.target_x, self.x, self.vx, 30);
+        eprintln!("accel needed: {}", a);
+
         match (self.target_x - self.x) {
             1.. => {
                 //go right
@@ -75,6 +79,8 @@ impl Lander {
             }
             0 => {
                 //stay put
+                burn.rotate = 0;
+                burn.power = 0;
             }
             ..=-1 => {
                 //go left
@@ -84,12 +90,8 @@ impl Lander {
         }
 
         // Determine the time needed to do this burn
-        let duration = Self::time_of_burn_for_x(
-            self.target_x,
-            Self::pow_rot_to_accel_x(burn.power, burn.rotate),
-            self.x,
-            self.vx,
-        );
+        let duration =
+            Self::time_of_burn_for_x(self.vx, Self::pow_rot_to_accel_x(burn.power, burn.rotate));
 
         burn.duration = duration;
 
@@ -166,47 +168,31 @@ impl Lander {
         ((x1 - x0).powi(2) + (y1 - y0).powi(2)).sqrt().abs()
     }
 
-    fn time_of_burn_for_x(x: i32, a_x: f64, x0: i32, v_x0: i32) -> i32 {
-        // t = (sqrt(2 a_x x - 2 a_x x0 + v_x0^2) - v_x0)/a_x
+    fn time_of_burn_for_x(v: i32, a: f64) -> i32 {
+        // t = -(2 v0)/a and a!=0
+        // t = 0
 
         //convert ints to floats for clarity
-        let x = x as f64;
-        let x0 = x0 as f64;
-        let v_x0 = v_x0 as f64;
+        let v = v as f64;
 
         // if the burn accel is 0, burn for zero seconds
-        if a_x == 0.0 {
+        if a == 0.0 {
             return 0;
         }
-
         //no div by 0!
-        assert!(a_x != 0.0);
+        assert!(a != 0.0);
 
-        eprintln!("(x, x0, v_x0, a_x): {:?}", (x, x0, v_x0, a_x));
-
-        // no sqrt(negative)!
-        match a_x {
-            a if a > 0.0 => {
-                assert!(x >= x0 - v_x0 * v_x0 / (2.0 * a_x));
-            }
-            a if a < 0.0 => {
-                assert!(x <= x0 - v_x0 * v_x0 / (2.0 * a_x));
-            }
-            _ => (),
-        }
-
-        //assert!(2.0 * a_x * x - 2.0 * a_x * x0 + v_x0 * v_x0 >= 0.0);
-
-        let time = (((2.0 * a_x * x - 2.0 * a_x * x0 + v_x0 * v_x0).sqrt() - v_x0) / a_x);
+        let time = -2.0 * v / a;
 
         eprintln!(
-            "time_of_burn_for_x\n\tf64: {}\n\tf64.round: {}\n\ti32: {}",
+            "time_of_burn_for_x\n\tf64: {}\n\tf64.clamp: {}\n\tf64.round: {}\n\ti32: {}",
             time,
-            time.round(),
-            time.round() as i32
+            time.clamp(0.0, f64::MAX),
+            time.clamp(0.0, f64::MAX).round(),
+            time.clamp(0.0, f64::MAX).round() as i32
         );
 
-        time.round() as i32
+        time.clamp(0.0, f64::MAX).round() as i32
     }
 
     /// .
@@ -216,6 +202,23 @@ impl Lander {
     /// .
     fn pow_rot_to_accel_y(power: i32, angle: i32) -> f64 {
         power as f64 * (angle as f64 + 180.0).to_radians().cos()
+    }
+
+    fn accel(x: i32, x0: i32, vx0: i32, t: i32) -> f64 {
+        let x = x as f64;
+        let x0 = x0 as f64;
+        let vx0 = vx0 as f64;
+        let t = t as f64;
+
+        let mut acceleration = match t {
+            t_test if t_test > 0.0 => 2.0 * (x - x0 - vx0 * t) / (t * t),
+            _ => 0.0,
+        };
+
+        // clamp it to our allowed thrust
+        acceleration = acceleration.clamp(-4.0, 4.0);
+
+        acceleration
     }
 }
 

@@ -9,7 +9,7 @@ macro_rules! parse_input {
     };
 }
 
-static ACCELERATION_DUE_TO_GRAVITY: f64 = -3.711;
+static ACCELERATION_DUE_TO_GRAVITY: Vec2 = Vec2 { x: 0.0, y: -3.711 };
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 struct Vec2 {
@@ -39,6 +39,31 @@ impl Vec2 {
         let r = (self.x * self.x + self.y * self.y).sqrt();
         let theta = self.y.atan2(self.x) * (180.0 / PI); // Convert radians to degrees
         (r, theta)
+    }
+
+    fn clamp_magnitude(&mut self, min: f64, max: f64) {
+        let mag = self.magnitude();
+
+        if mag < min {
+            let normalized = self.normalized();
+            self.x = normalized.x * min;
+            self.y = normalized.y * min;
+        } else if mag > max {
+            let normalized = self.normalized();
+            self.x = normalized.x * max;
+            self.y = normalized.y * max;
+        }
+    }
+
+    fn rotate(&self, angle_degrees: f64) -> Vec2 {
+        let theta = angle_degrees * PI / 180.0; // Convert to radians
+        let cos_theta = theta.cos();
+        let sin_theta = theta.sin();
+
+        Vec2 {
+            x: self.x * cos_theta - self.y * sin_theta,
+            y: self.x * sin_theta + self.y * cos_theta,
+        }
     }
 }
 impl Add for Vec2 {
@@ -185,15 +210,8 @@ impl Lander {
 
         // get the needed thrust
         let thrust = self.calculate_thrust(30.0);
-        eprintln!("thrust needed: {:#?}", thrust);
-        eprintln!("thrust.direction(world): {:#?}", thrust.direction());
-        eprintln!(
-            "thrust.direction(thrust): {:#?}",
-            Burn::world_to_thrust_rot(thrust.direction())
-        );
 
-        // convert the world-coordinate rotation to the thrust coordinate system
-        burn.rotate = Burn::world_to_thrust_rot(thrust.direction());
+        burn.rotate = thrust.direction();
         burn.power = thrust.magnitude().round() as i32;
 
         // Determine the time needed to do this burn
@@ -296,44 +314,70 @@ impl Lander {
     }
 
     /// This uses the formula:
-    ///     2.0 * (tp - p - v * t) / (t * t)
-    /// to calculate the thrust needed this turn.
+    /// - `2.0 * (tp - p - v * t) / (t * t)`
+    ///   to calculate the thrust needed this turn.
     ///
-    /// `t` is the time variable used in the formula. It essentially acts as a
-    /// look-ahead amount allowing the function to better predict the outcome for
-    /// higher values. Needs to be explored.
+    /// - `t` is the time variable used in the formula. It essentially acts as a
+    ///   look-ahead amount allowing the function to better predict the outcome for
+    ///   higher values. Needs to be explored.
+    ///
+    /// Returns the thrust as a Vec2 in thrust-space coordinates and clamped to
+    /// the allowed values of the thruster.
     fn calculate_thrust(&self, t: f64) -> Vec2 {
         let tp = self.target_position;
         let p = self.position;
         let v = self.velocity;
 
-        let mut thrust_acceleration = match t {
-            t_test if t_test > 0.0 => 2.0 * (tp - p - v * t) / (t * t),
+        let mut thrust = match t {
+            // if time is greater than zero, calculate thrust
+            t if t > 0.0 => {
+                let mut accel = 2.0 * (tp - p - v * t) / (t * t);
+
+                //let mut accel = Vec2::new(0.0, 0.0);
+
+                eprintln!("accel: the acceleration computed to go from position to target_position");
+                eprintln!("\taccel init:     {:?}", accel);
+                eprintln!("\tgravity:        {:?}", ACCELERATION_DUE_TO_GRAVITY);
+
+                // account for gravity
+                accel = accel - ACCELERATION_DUE_TO_GRAVITY;
+
+                eprintln!("\taccel-grav:     {:?}", accel);
+
+                // prevent downward thrust
+                accel.y = accel.y.clamp(0.0, 4.0);
+                eprintln!("\taccel-no ↓:     {:?}", accel);
+
+                accel.clamp_magnitude(0.0, 4.0);
+                eprintln!("\taccel-clmp mag: {:?}", accel);
+
+                //convert to thrust space
+                accel = accel.rotate(-90.0);
+                eprintln!("\taccel thr sp:   {:?}", accel);   
+                
+                
+
+                accel
+            }
             _ => Vec2::new(0.0, 0.0),
         };
+        // eprintln!("thrust: {:?}", thrust);
+        // eprintln!("thrust.mag {:?}", thrust.magnitude());
+        // eprintln!("thrust.dir(thrust-space) {:?}", thrust.direction());
+        // eprintln!(
+        //     "thrust.dir(world-space) {:?}",
+        //     thrust.rotate(90.0).direction()
+        // );
 
-        // clamp it to our allowed thrust by normalizing to
-        // 4.0
-        eprintln!("acc: {:#?}", thrust_acceleration);
-        eprintln!("norm: {:#?}", thrust_acceleration.normalized());
-        eprintln!(
-            "norm.mag: {:#?}",
-            thrust_acceleration.normalized().magnitude() as i32
-        );
-        eprintln!(
-            "(4*norm).mag: {:#?}",
-            (4.0 * thrust_acceleration.normalized()).magnitude() as i32
-        );
-
-        thrust_acceleration = { 4.0 * thrust_acceleration.normalized() };
-
-        { //assertion check
-            assert!(Burn::world_to_thrust_rot(thrust_acceleration.direction()) >= -90);
-            assert!(Burn::world_to_thrust_rot(thrust_acceleration.direction()) <= 90);
-
+        {
+            //assertion check
+            assert!(thrust.direction() >= -90);
+            assert!(thrust.direction() <= 90);
+            assert!(thrust.magnitude() <= 4.0);
+            assert!(thrust.magnitude() >= 0.0);
         }
 
-        thrust_acceleration
+        thrust
     }
 }
 

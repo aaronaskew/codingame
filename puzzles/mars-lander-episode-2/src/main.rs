@@ -1,5 +1,8 @@
 #![allow(unused)]
-use std::{borrow::BorrowMut, io};
+use std::f64::consts::PI;
+use std::io;
+use std::ops::{Add, Div, Mul, Sub};
+
 macro_rules! parse_input {
     ($x:expr, $t:ident) => {
         $x.trim().parse::<$t>().unwrap()
@@ -7,6 +10,87 @@ macro_rules! parse_input {
 }
 
 static ACCELERATION_DUE_TO_GRAVITY: f64 = -3.711;
+
+#[derive(Debug, PartialEq, Clone, Copy)]
+struct Vec2 {
+    x: f64,
+    y: f64,
+}
+impl Vec2 {
+    fn new(x: f64, y: f64) -> Self {
+        Vec2 { x, y }
+    }
+
+    fn magnitude(&self) -> f64 {
+        (self.x * self.x + self.y * self.y).sqrt()
+    }
+
+    fn direction(&self) -> i32 {
+        let radians = self.y.atan2(self.x);
+        let degrees = radians * (180.0 / PI);
+        degrees.round() as i32
+    }
+
+    fn normalized(&self) -> Self {
+        *self / self.magnitude()
+    }
+
+    fn to_polar(self) -> (f64, f64) {
+        let r = (self.x * self.x + self.y * self.y).sqrt();
+        let theta = self.y.atan2(self.x) * (180.0 / PI); // Convert radians to degrees
+        (r, theta)
+    }
+}
+impl Add for Vec2 {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        Vec2 {
+            x: self.x + rhs.x,
+            y: self.y + rhs.y,
+        }
+    }
+}
+impl Sub for Vec2 {
+    type Output = Self;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        Vec2 {
+            x: self.x - rhs.x,
+            y: self.y - rhs.y,
+        }
+    }
+}
+impl Mul<f64> for Vec2 {
+    type Output = Self;
+
+    fn mul(self, rhs: f64) -> Self::Output {
+        Vec2 {
+            x: rhs * self.x,
+            y: rhs * self.y,
+        }
+    }
+}
+impl Mul<Vec2> for f64 {
+    type Output = Vec2;
+
+    fn mul(self, rhs: Vec2) -> Self::Output {
+        Vec2 {
+            x: self * rhs.x,
+            y: self * rhs.y,
+        }
+    }
+}
+impl Div<f64> for Vec2 {
+    type Output = Self;
+
+    fn div(self, rhs: f64) -> Self::Output {
+        Vec2 {
+            x: self.x / rhs,
+            y: self.y / rhs,
+        }
+    }
+}
 
 #[derive(Debug)]
 struct Burn {
@@ -25,22 +109,44 @@ impl Burn {
             duration: 0,
         }
     }
+
+    /// Transform the `rotation` (in degrees) from worldspace cartesion
+    /// coordinate system to the thrust polar coordinate system by subtracting 90
+    /// degrees.
+    fn world_to_thrust_rot(rotation: i32) -> i32 {
+        rotation - 90
+    }
+
+    /// Transform the `rotation` (in degrees) from worldspace cartesion
+    /// coordinate system to the thrust polar coordinate system by adding
+    /// 90 degrees.
+    fn thrust_to_world_rot(rotation: i32) -> i32 {
+        rotation + 90
+    }
 }
 
+/// # Members
+/// - `time`: mission time
+/// - `position`: Vec2 (world-space)
+/// - `rotation`: f64 (world-space)
+/// - `velocity`: Vec2 (world-space)
+/// - `acceleration`: Vec2 (world-space)
+/// - `thrust_angle`: i32 (thrust-space)
+/// - `thrust_power`: i32
+/// - `fuel`: i32
+/// - `target_position`: Vec2 (world-space)
+/// - `active_burn`: Burn
 #[derive(Debug)]
 struct Lander {
     time: u32,
-    x: i32,  // from MC
-    y: i32,  // from MC
-    vx: i32, // from MC
-    vy: i32, // from MC
-    ax: f64,
-    ay: f64,
-    angle: i32, // from MC
-    power: i32, // from MC
-    fuel: i32,  // from MC
-    target_x: i32,
-    target_y: i32,
+    position: Vec2, // from MC
+    rotation: f64,
+    velocity: Vec2, // from MC
+    acceleration: Vec2,
+    thrust_angle: i32, // from MC
+    thrust_power: i32, // from MC
+    fuel: i32,         // from MC
+    target_position: Vec2,
 
     //burn_queue: Vec<Burn>,
     active_burn: Burn,
@@ -54,51 +160,48 @@ impl Lander {
         format!("{} {}", rotate_cmd, power_cmd).to_string()
     }
 
-    ///
-    ///
     /// Do the physics calculations every tick and set the commands for the
     /// next turn.
     fn physics_update(&mut self) {
         //update acceleration
-        self.ax = Self::pow_rot_to_accel_x(self.power, self.angle);
-        self.ay = Self::pow_rot_to_accel_y(self.power, self.angle) + ACCELERATION_DUE_TO_GRAVITY;
+        // self.acceleration.x = Self::pow_rot_to_accel_x(self.power, self.angle);
+        // self.acceleration.y =
+        //     Self::pow_rot_to_accel_y(self.power, self.angle) + ACCELERATION_DUE_TO_GRAVITY;
+
+        self.acceleration = {
+            Vec2 {
+                x: self.thrust_power as f64
+                    * (Burn::thrust_to_world_rot(self.thrust_angle) as f64)
+                        .to_radians()
+                        .sin(),
+                y: self.thrust_power as f64
+                    * (Burn::thrust_to_world_rot(self.thrust_angle) as f64)
+                        .to_radians()
+                        .cos(),
+            }
+        };
 
         let mut burn = Burn::new();
 
-        // focus solely on the x-dimension for now
+        // get the needed thrust
+        let thrust = self.calculate_thrust(30.0);
+        eprintln!("thrust needed: {:#?}", thrust);
+        eprintln!("thrust.direction(world): {:#?}", thrust.direction());
+        eprintln!(
+            "thrust.direction(thrust): {:#?}",
+            Burn::world_to_thrust_rot(thrust.direction())
+        );
 
-        // get the needed acceleration
-        let a = Self::accel(self.target_x, self.x, self.vx, 30);
-        eprintln!("accel needed: {}", a);
-
-        //unsure if should round, ceil, or floor
-        // let a_int = a.round() as i32;
-        // let a_int = a.ceil() as i32;
-        // let a_int = a.floor() as i32;
-
-        match (a, a.abs().ceil() as i32) {
-            (a, a_int) if a > 0.0 => {
-                //go right
-                burn.rotate = -90;
-                burn.power = a_int;
-            }
-            (a, a_int) if a < 0.0 => {
-                //go left
-                burn.rotate = 90;
-                burn.power = a_int;
-            }
-            _ => {
-                //stay put
-                burn.rotate = 0;
-                burn.power = 0;
-            }
-        }
+        // convert the world-coordinate rotation to the thrust coordinate system
+        burn.rotate = Burn::world_to_thrust_rot(thrust.direction());
+        burn.power = thrust.magnitude().round() as i32;
 
         // Determine the time needed to do this burn
-        let duration =
-            Self::time_of_burn_for_x(self.vx, Self::pow_rot_to_accel_x(burn.power, burn.rotate));
-
-        burn.duration = duration;
+        // let duration = Self::time_of_burn_for_x(
+        //     self.velocity.x,
+        //     Self::pow_rot_to_accel_x(burn.power, burn.rotate),
+        // );
+        // burn.duration = duration;
 
         self.active_burn = burn;
 
@@ -114,8 +217,8 @@ impl Lander {
     ///     should account for the projected position of the lander when determining
     ///     the distance function
     fn determine_target(&mut self, surface_data: &mut [(i32, i32)]) {
-        assert!(self.x != -1 && self.y != -1);
-        assert!(self.target_x == -1 && self.target_y == -1);
+        assert!(self.position.x != -1.0 && self.position.y != -1.0);
+        assert!(self.target_position.x == -1.0 && self.target_position.y == -1.0);
 
         //eprintln!("entering determine_target()");
 
@@ -143,42 +246,34 @@ impl Lander {
         // 2) if not, find the closest point to the lander
         // 3) set the target
 
-        if self.y > flat_surface_points[0].1
-            && self.x >= flat_surface_points[0].0
-            && self.x <= flat_surface_points[1].0
+        if self.position.y > flat_surface_points[0].1 as f64
+            && self.position.x >= flat_surface_points[0].0 as f64
+            && self.position.x <= flat_surface_points[1].0 as f64
         {
-            assert!(self.y > flat_surface_points[0].1);
-            assert!(self.x <= flat_surface_points[1].0);
-            assert!(self.x >= flat_surface_points[0].0);
+            assert!(self.position.y > flat_surface_points[0].1 as f64);
+            assert!(self.position.x <= flat_surface_points[1].0 as f64);
+            assert!(self.position.x >= flat_surface_points[0].0 as f64);
 
             // the lander is above the flat surface
-            // target is (self.x, flat_surface_point.y)
-            self.target_x = self.x;
-            self.target_y = flat_surface_points[0].1;
+            // target is (self.position.x, flat_surface_point.y)
+            self.target_position.x = self.position.x;
+            self.target_position.y = flat_surface_points[0].1 as f64;
         } else {
             // we know the target y, get the closest target x
-            flat_surface_points
-                .sort_by(|(ax, _), (bx, _)| (self.x - *ax).abs().cmp(&(self.x - *bx).abs()));
+            flat_surface_points.sort_by(|(ax, _), (bx, _)| {
+                (self.position.x as i32 - *ax)
+                    .abs()
+                    .cmp(&(self.position.x as i32 - *bx).abs())
+            });
 
-            self.target_x = flat_surface_points[0].0;
-            self.target_y = flat_surface_points[0].1;
+            self.target_position.x = flat_surface_points[0].0 as f64;
+            self.target_position.y = flat_surface_points[0].1 as f64;
         }
     }
 
-    fn pos(pos_0: f64, v_0: f64, a: f64, t: f64) -> f64 {
-        pos_0 + v_0 * t + 0.5 * a * t * t
-    }
-
-    fn distance(x0: f64, y0: f64, x1: f64, y1: f64) -> f64 {
-        ((x1 - x0).powi(2) + (y1 - y0).powi(2)).sqrt().abs()
-    }
-
-    fn time_of_burn_for_x(v: i32, a: f64) -> i32 {
+    fn time_of_burn_for_x(v: f64, a: f64) -> i32 {
         // t = -(2 v0)/a and a!=0
         // t = 0
-
-        //convert ints to floats for clarity
-        let v = v as f64;
 
         // if the burn accel is 0, burn for zero seconds
         if a == 0.0 {
@@ -200,30 +295,45 @@ impl Lander {
         time.clamp(0.0, f64::MAX).round() as i32
     }
 
-    /// .
-    fn pow_rot_to_accel_x(power: i32, angle: i32) -> f64 {
-        power as f64 * (angle as f64 + 180.0).to_radians().sin()
-    }
-    /// .
-    fn pow_rot_to_accel_y(power: i32, angle: i32) -> f64 {
-        power as f64 * (angle as f64 + 180.0).to_radians().cos()
-    }
+    /// This uses the formula:
+    ///     2.0 * (tp - p - v * t) / (t * t)
+    /// to calculate the thrust needed this turn.
+    ///
+    /// `t` is the time variable used in the formula. It essentially acts as a
+    /// look-ahead amount allowing the function to better predict the outcome for
+    /// higher values. Needs to be explored.
+    fn calculate_thrust(&self, t: f64) -> Vec2 {
+        let tp = self.target_position;
+        let p = self.position;
+        let v = self.velocity;
 
-    fn accel(x: i32, x0: i32, vx0: i32, t: i32) -> f64 {
-        let x = x as f64;
-        let x0 = x0 as f64;
-        let vx0 = vx0 as f64;
-        let t = t as f64;
-
-        let mut acceleration = match t {
-            t_test if t_test > 0.0 => 2.0 * (x - x0 - vx0 * t) / (t * t),
-            _ => 0.0,
+        let mut thrust_acceleration = match t {
+            t_test if t_test > 0.0 => 2.0 * (tp - p - v * t) / (t * t),
+            _ => Vec2::new(0.0, 0.0),
         };
 
-        // clamp it to our allowed thrust
-        acceleration = acceleration.clamp(-4.0, 4.0);
+        // clamp it to our allowed thrust by normalizing to
+        // 4.0
+        eprintln!("acc: {:#?}", thrust_acceleration);
+        eprintln!("norm: {:#?}", thrust_acceleration.normalized());
+        eprintln!(
+            "norm.mag: {:#?}",
+            thrust_acceleration.normalized().magnitude() as i32
+        );
+        eprintln!(
+            "(4*norm).mag: {:#?}",
+            (4.0 * thrust_acceleration.normalized()).magnitude() as i32
+        );
 
-        acceleration
+        thrust_acceleration = { 4.0 * thrust_acceleration.normalized() };
+
+        { //assertion check
+            assert!(Burn::world_to_thrust_rot(thrust_acceleration.direction()) >= -90);
+            assert!(Burn::world_to_thrust_rot(thrust_acceleration.direction()) <= 90);
+
+        }
+
+        thrust_acceleration
     }
 }
 
@@ -245,13 +355,14 @@ fn read_lander_data(lander: &mut Lander) {
     // the thrust power (0 to 4).
 
     //update lander data from input
-    lander.x = x;
-    lander.y = y;
-    lander.vx = h_speed;
-    lander.vy = v_speed;
+    lander.position.x = x as f64;
+    lander.position.y = y as f64;
+    lander.velocity.x = h_speed as f64;
+    lander.velocity.y = v_speed as f64;
     lander.fuel = fuel;
-    lander.angle = rotate;
-    lander.power = power;
+    lander.thrust_angle = rotate;
+    lander.rotation = Burn::thrust_to_world_rot(rotate) as f64;
+    lander.thrust_power = power;
 }
 
 /**
@@ -260,29 +371,25 @@ fn read_lander_data(lander: &mut Lander) {
  **/
 fn main() {
     let mut lander = Lander {
-        x: -1,
-        y: -1,
-        vx: 0,
-        vy: 0,
-        fuel: -1,
-        power: -1,
-        ax: 0.0,
-        ay: 0.0,
         time: 0,
-        target_x: -1,
-        target_y: -1,
-        angle: 0,
-        //burn_queue: vec![],
+        position: Vec2 { x: -1.0, y: -1.0 },
+        rotation: 0.0,
+        velocity: Vec2 { x: 0.0, y: 0.0 },
+        acceleration: Vec2 { x: 0.0, y: 0.0 },
+        fuel: -1,
+        thrust_power: -1,
+        thrust_angle: 0,
         active_burn: Burn::new(),
+        target_position: Vec2 { x: -1.0, y: -1.0 },
     };
 
     let mut surface_data: Vec<(i32, i32)> = vec![];
 
-    game_init(&lander, &mut surface_data);
+    game_init(&mut surface_data);
     game_loop(&mut lander, &mut surface_data);
 }
 
-fn game_init(lander: &Lander, surface_data: &mut Vec<(i32, i32)>) {
+fn game_init(surface_data: &mut Vec<(i32, i32)>) {
     let mut input_line = String::new();
     io::stdin().read_line(&mut input_line).unwrap();
     let surface_n = parse_input!(input_line, i32);
@@ -309,7 +416,7 @@ fn game_loop(lander: &mut Lander, surface_data: &mut [(i32, i32)]) {
     loop {
         read_lander_data(lander);
 
-        if lander.target_x == -1 && lander.target_y == -1 {
+        if lander.target_position.x == -1.0 && lander.target_position.y == -1.0 {
             lander.determine_target(surface_data);
         }
 

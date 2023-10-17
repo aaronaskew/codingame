@@ -1,7 +1,7 @@
 #![allow(unused)]
 use std::f64::consts::PI;
 use std::io;
-use std::ops::{Add, Div, Mul, Sub};
+use vec2::*;
 
 macro_rules! parse_input {
     ($x:expr, $t:ident) => {
@@ -11,109 +11,125 @@ macro_rules! parse_input {
 
 static ACCELERATION_DUE_TO_GRAVITY: Vec2 = Vec2 { x: 0.0, y: -3.711 };
 
-#[derive(Debug, PartialEq, Clone, Copy)]
-struct Vec2 {
-    x: f64,
-    y: f64,
+mod vec2 {
+    use std::f64::consts::PI;
+    use std::ops::{Add, Div, Mul, Sub};
+
+    #[derive(Debug, PartialEq, Clone, Copy)]
+    pub struct Vec2 {
+        pub x: f64,
+        pub y: f64,
+    }
+    impl Vec2 {
+        pub fn new(x: f64, y: f64) -> Self {
+            Vec2 { x, y }
+        }
+
+        pub fn magnitude(&self) -> f64 {
+            (self.x * self.x + self.y * self.y).sqrt()
+        }
+
+        pub fn direction(&self) -> i32 {
+            let radians = self.y.atan2(self.x);
+            let degrees = radians * (180.0 / PI);
+            degrees.round() as i32
+        }
+
+        pub fn normalized(&self) -> Self {
+            *self / self.magnitude()
+        }
+
+        pub fn to_polar(self) -> (f64, f64) {
+            let r = (self.x * self.x + self.y * self.y).sqrt();
+            let theta = self.y.atan2(self.x) * (180.0 / PI); // Convert radians to degrees
+            (r, theta)
+        }
+
+        pub fn clamp_magnitude(&mut self, min: f64, max: f64) {
+            let mag = self.magnitude();
+
+            if mag < min {
+                let normalized = self.normalized();
+                self.x = normalized.x * min;
+                self.y = normalized.y * min;
+            } else if mag > max {
+                let normalized = self.normalized();
+                self.x = normalized.x * max;
+                self.y = normalized.y * max;
+            }
+        }
+
+        pub fn rotate(&self, angle_degrees: f64) -> Vec2 {
+            let theta = angle_degrees * PI / 180.0; // Convert to radians
+            let cos_theta = theta.cos();
+            let sin_theta = theta.sin();
+
+            Vec2 {
+                x: self.x * cos_theta - self.y * sin_theta,
+                y: self.x * sin_theta + self.y * cos_theta,
+            }
+        }
+    }
+    impl Add for Vec2 {
+        type Output = Self;
+
+        fn add(self, rhs: Self) -> Self::Output {
+            Vec2 {
+                x: self.x + rhs.x,
+                y: self.y + rhs.y,
+            }
+        }
+    }
+    impl Sub for Vec2 {
+        type Output = Self;
+
+        fn sub(self, rhs: Self) -> Self::Output {
+            Vec2 {
+                x: self.x - rhs.x,
+                y: self.y - rhs.y,
+            }
+        }
+    }
+    impl Mul<f64> for Vec2 {
+        type Output = Self;
+
+        fn mul(self, rhs: f64) -> Self::Output {
+            Vec2 {
+                x: rhs * self.x,
+                y: rhs * self.y,
+            }
+        }
+    }
+    impl Mul<Vec2> for f64 {
+        type Output = Vec2;
+
+        fn mul(self, rhs: Vec2) -> Self::Output {
+            Vec2 {
+                x: self * rhs.x,
+                y: self * rhs.y,
+            }
+        }
+    }
+    impl Div<f64> for Vec2 {
+        type Output = Self;
+
+        fn div(self, rhs: f64) -> Self::Output {
+            Vec2 {
+                x: self.x / rhs,
+                y: self.y / rhs,
+            }
+        }
+    }
 }
-impl Vec2 {
-    fn new(x: f64, y: f64) -> Self {
-        Vec2 { x, y }
-    }
 
-    fn magnitude(&self) -> f64 {
-        (self.x * self.x + self.y * self.y).sqrt()
-    }
-
-    fn direction(&self) -> i32 {
-        let radians = self.y.atan2(self.x);
-        let degrees = radians * (180.0 / PI);
-        degrees.round() as i32
-    }
-
-    fn normalized(&self) -> Self {
-        *self / self.magnitude()
-    }
-
-    fn to_polar(self) -> (f64, f64) {
-        let r = (self.x * self.x + self.y * self.y).sqrt();
-        let theta = self.y.atan2(self.x) * (180.0 / PI); // Convert radians to degrees
-        (r, theta)
-    }
-
-    fn clamp_magnitude(&mut self, min: f64, max: f64) {
-        let mag = self.magnitude();
-
-        if mag < min {
-            let normalized = self.normalized();
-            self.x = normalized.x * min;
-            self.y = normalized.y * min;
-        } else if mag > max {
-            let normalized = self.normalized();
-            self.x = normalized.x * max;
-            self.y = normalized.y * max;
-        }
-    }
-
-    fn rotate(&self, angle_degrees: f64) -> Vec2 {
-        let theta = angle_degrees * PI / 180.0; // Convert to radians
-        let cos_theta = theta.cos();
-        let sin_theta = theta.sin();
-
-        Vec2 {
-            x: self.x * cos_theta - self.y * sin_theta,
-            y: self.x * sin_theta + self.y * cos_theta,
-        }
-    }
+#[derive(Debug)]
+struct Surface {
+    data: Vec<(i32, i32)>,
 }
-impl Add for Vec2 {
-    type Output = Self;
 
-    fn add(self, rhs: Self) -> Self::Output {
-        Vec2 {
-            x: self.x + rhs.x,
-            y: self.y + rhs.y,
-        }
-    }
-}
-impl Sub for Vec2 {
-    type Output = Self;
-
-    fn sub(self, rhs: Self) -> Self::Output {
-        Vec2 {
-            x: self.x - rhs.x,
-            y: self.y - rhs.y,
-        }
-    }
-}
-impl Mul<f64> for Vec2 {
-    type Output = Self;
-
-    fn mul(self, rhs: f64) -> Self::Output {
-        Vec2 {
-            x: rhs * self.x,
-            y: rhs * self.y,
-        }
-    }
-}
-impl Mul<Vec2> for f64 {
-    type Output = Vec2;
-
-    fn mul(self, rhs: Vec2) -> Self::Output {
-        Vec2 {
-            x: self * rhs.x,
-            y: self * rhs.y,
-        }
-    }
-}
-impl Div<f64> for Vec2 {
-    type Output = Self;
-
-    fn div(self, rhs: f64) -> Self::Output {
-        Vec2 {
-            x: self.x / rhs,
-            y: self.y / rhs,
-        }
+impl Surface {
+    fn new() -> Self {
+        Self { data: Vec::new() }
     }
 }
 
@@ -172,9 +188,8 @@ struct Lander {
     thrust_power: i32, // from MC
     fuel: i32,         // from MC
     target_position: Vec2,
-
-    //burn_queue: Vec<Burn>,
     active_burn: Burn,
+    surface: Surface,
 }
 
 impl Lander {
@@ -188,22 +203,21 @@ impl Lander {
     /// Do the physics calculations every tick and set the commands for the
     /// next turn.
     fn physics_update(&mut self) {
-        //update acceleration
-        // self.acceleration.x = Self::pow_rot_to_accel_x(self.power, self.angle);
-        // self.acceleration.y =
-        //     Self::pow_rot_to_accel_y(self.power, self.angle) + ACCELERATION_DUE_TO_GRAVITY;
+
+        // set acceleration
+        //   acceleration due to thrust + gravity
 
         self.acceleration = {
-            Vec2 {
-                x: self.thrust_power as f64
+            Vec2::new(
+                self.thrust_power as f64
                     * (Burn::thrust_to_world_rot(self.thrust_angle) as f64)
                         .to_radians()
                         .sin(),
-                y: self.thrust_power as f64
+                self.thrust_power as f64
                     * (Burn::thrust_to_world_rot(self.thrust_angle) as f64)
                         .to_radians()
                         .cos(),
-            }
+            ) + ACCELERATION_DUE_TO_GRAVITY
         };
 
         let mut burn = Burn::new();
@@ -331,33 +345,34 @@ impl Lander {
         let mut thrust = match t {
             // if time is greater than zero, calculate thrust
             t if t > 0.0 => {
-                let mut accel = 2.0 * (tp - p - v * t) / (t * t);
+                let mut target_accel = 2.0 * (tp - p - v * t) / (t * t);
 
-                //let mut accel = Vec2::new(0.0, 0.0);
+                // add to our current acceleration
+                target_accel = target_accel + self.acceleration;
 
-                eprintln!("accel: the acceleration computed to go from position to target_position");
-                eprintln!("\taccel init:     {:?}", accel);
-                eprintln!("\tgravity:        {:?}", ACCELERATION_DUE_TO_GRAVITY);
+                eprintln!(
+                    "accel: the acceleration computed to go from position to target_position"
+                );
+                eprintln!("\taccel init:     {:?}", target_accel);
 
+                // eprintln!("\tgravity:        {:?}", ACCELERATION_DUE_TO_GRAVITY);
                 // account for gravity
-                accel = accel - ACCELERATION_DUE_TO_GRAVITY;
+                //accel = accel - ACCELERATION_DUE_TO_GRAVITY;
 
-                eprintln!("\taccel-grav:     {:?}", accel);
+                //eprintln!("\taccel-grav:     {:?}", accel);
 
                 // prevent downward thrust
-                accel.y = accel.y.clamp(0.0, 4.0);
-                eprintln!("\taccel-no ↓:     {:?}", accel);
+                target_accel.y = target_accel.y.clamp(0.0, 4.0);
+                eprintln!("\taccel-no ↓:     {:?}", target_accel);
 
-                accel.clamp_magnitude(0.0, 4.0);
-                eprintln!("\taccel-clmp mag: {:?}", accel);
+                target_accel.clamp_magnitude(0.0, 4.0);
+                eprintln!("\taccel-clmp mag: {:?}", target_accel);
 
                 //convert to thrust space
-                accel = accel.rotate(-90.0);
-                eprintln!("\taccel thr sp:   {:?}", accel);   
-                
-                
+                target_accel = target_accel.rotate(-90.0);
+                eprintln!("\taccel thr sp:   {:?}", target_accel);
 
-                accel
+                target_accel
             }
             _ => Vec2::new(0.0, 0.0),
         };
@@ -409,10 +424,6 @@ fn read_lander_data(lander: &mut Lander) {
     lander.thrust_power = power;
 }
 
-/**
- * Auto-generated code below aims at helping you parse
- * the standard input according to the problem statement.
- **/
 fn main() {
     let mut lander = Lander {
         time: 0,
@@ -425,6 +436,7 @@ fn main() {
         thrust_angle: 0,
         active_burn: Burn::new(),
         target_position: Vec2 { x: -1.0, y: -1.0 },
+        surface: Surface::new(),
     };
 
     let mut surface_data: Vec<(i32, i32)> = vec![];

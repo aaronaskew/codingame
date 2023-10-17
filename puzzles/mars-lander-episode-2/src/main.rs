@@ -13,7 +13,8 @@ struct Burn {
     power: i32,
     rotate: i32,
     duration: i32,
-    time_remaining: i32,
+    // don't think i need this at the moment
+    // time_remaining: i32,
 }
 
 impl Burn {
@@ -22,68 +23,77 @@ impl Burn {
             power: 0,
             rotate: 0,
             duration: 0,
-            time_remaining: 0,
         }
     }
 }
 
 #[derive(Debug)]
 struct Lander {
-    // provided by MC per turn
-    x: i32,
-    y: i32,
-    vx: i32,
-    vy: i32,
-    angle: i32,
-    power: i32,
-    fuel: i32,
-
-    // handled internally
     time: u32,
+    x: i32,  // from MC
+    y: i32,  // from MC
+    vx: i32, // from MC
+    vy: i32, // from MC
     ax: f64,
     ay: f64,
+    angle: i32, // from MC
+    power: i32, // from MC
+    fuel: i32,  // from MC
     target_x: i32,
     target_y: i32,
-    desired_power: i32,
-    desired_angle: i32,
-    burn_queue: Vec<Burn>,
+
+    //burn_queue: Vec<Burn>,
     active_burn: Burn,
 }
 
 impl Lander {
     fn get_commands(&mut self) -> String {
-        let cmd_rotation = self.desired_angle;
-        let cmd_thrust = self.desired_power;
+        let rotate_cmd = self.active_burn.rotate;
+        let power_cmd = self.active_burn.power;
 
-        format!("{} {}", cmd_rotation, cmd_thrust).to_string()
+        format!("{} {}", rotate_cmd, power_cmd).to_string()
     }
 
+    ///
+    ///
+    /// Do the physics calculations every tick and set the commands for the
+    /// next turn.
     fn physics_update(&mut self) {
-        
         //update acceleration
-        self.ax = self.power as f64 * (self.angle as f64).to_radians().sin();
-        self.ay = self.power as f64 * (self.angle as f64).to_radians().cos()
-            + ACCELERATION_DUE_TO_GRAVITY;
+        self.ax = Self::pow_rot_to_accel_x(self.power, self.angle);
+        self.ay = Self::pow_rot_to_accel_y(self.power, self.angle) + ACCELERATION_DUE_TO_GRAVITY;
 
-        //x
-        // match (self.target_x - self.x) {
-        //     1.. => {
-        //         //go right
-        //         self.desired_angle = -90;
-        //         self.desired_power = 4;
-        //     }
-        //     0 => {
-        //         //stay put
-        //     }
-        //     ..=-1 => {
-        //         //go left
-        //         self.desired_angle = 90;
-        //         self.desired_power = 4;
-        //     }
-        // }
+        let mut burn = Burn::new();
 
-        let duration =
-            self.time_of_burn_for_x(self.target_x as f64, self.ax, self.x as f64, self.vx as f64);
+        // focus solely on the x-dimension for now
+        //
+        match (self.target_x - self.x) {
+            1.. => {
+                //go right
+                burn.rotate = -90;
+                burn.power = 4;
+            }
+            0 => {
+                //stay put
+            }
+            ..=-1 => {
+                //go left
+                burn.rotate = 90;
+                burn.power = 4;
+            }
+        }
+
+        // Determine the time needed to do this burn
+        let duration = Self::time_of_burn_for_x(
+            self.target_x,
+            Self::pow_rot_to_accel_x(burn.power, burn.rotate),
+            self.x,
+            self.vx,
+        );
+
+        burn.duration = duration;
+
+        self.active_burn = burn;
 
         //eprintln!("calculated ax: {}", ax);
     }
@@ -156,9 +166,56 @@ impl Lander {
         ((x1 - x0).powi(2) + (y1 - y0).powi(2)).sqrt().abs()
     }
 
-    fn time_of_burn_for_x(&self, x: f64, a_x: f64, x0: f64, v_x0: f64) -> f64 {
+    fn time_of_burn_for_x(x: i32, a_x: f64, x0: i32, v_x0: i32) -> i32 {
         // t = (sqrt(2 a_x x - 2 a_x x0 + v_x0^2) - v_x0)/a_x
-        ((2.0 * a_x * x - 2.0 * a_x * x0 + v_x0 * v_x0).sqrt() - v_x0) / a_x
+
+        //convert ints to floats for clarity
+        let x = x as f64;
+        let x0 = x0 as f64;
+        let v_x0 = v_x0 as f64;
+
+        // if the burn accel is 0, burn for zero seconds
+        if a_x == 0.0 {
+            return 0;
+        }
+
+        //no div by 0!
+        assert!(a_x != 0.0);
+
+        eprintln!("(x, x0, v_x0, a_x): {:?}", (x, x0, v_x0, a_x));
+
+        // no sqrt(negative)!
+        match a_x {
+            a if a > 0.0 => {
+                assert!(x >= x0 - v_x0 * v_x0 / (2.0 * a_x));
+            }
+            a if a < 0.0 => {
+                assert!(x <= x0 - v_x0 * v_x0 / (2.0 * a_x));
+            }
+            _ => (),
+        }
+
+        //assert!(2.0 * a_x * x - 2.0 * a_x * x0 + v_x0 * v_x0 >= 0.0);
+
+        let time = (((2.0 * a_x * x - 2.0 * a_x * x0 + v_x0 * v_x0).sqrt() - v_x0) / a_x);
+
+        eprintln!(
+            "time_of_burn_for_x\n\tf64: {}\n\tf64.round: {}\n\ti32: {}",
+            time,
+            time.round(),
+            time.round() as i32
+        );
+
+        time.round() as i32
+    }
+
+    /// .
+    fn pow_rot_to_accel_x(power: i32, angle: i32) -> f64 {
+        power as f64 * (angle as f64 + 180.0).to_radians().sin()
+    }
+    /// .
+    fn pow_rot_to_accel_y(power: i32, angle: i32) -> f64 {
+        power as f64 * (angle as f64 + 180.0).to_radians().cos()
     }
 }
 
@@ -207,9 +264,7 @@ fn main() {
         target_x: -1,
         target_y: -1,
         angle: 0,
-        desired_power: 0,
-        desired_angle: 0,
-        burn_queue: vec![],
+        //burn_queue: vec![],
         active_burn: Burn::new(),
     };
 

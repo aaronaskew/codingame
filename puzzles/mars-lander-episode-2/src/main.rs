@@ -71,21 +71,26 @@ impl Lander {
         let a = Self::accel(self.target_x, self.x, self.vx, 30);
         eprintln!("accel needed: {}", a);
 
-        match (self.target_x - self.x) {
-            1.. => {
+        //unsure if should round, ceil, or floor
+        // let a_int = a.round() as i32;
+        // let a_int = a.ceil() as i32;
+        // let a_int = a.floor() as i32;
+
+        match (a, a.abs().ceil() as i32) {
+            (a, a_int) if a > 0.0 => {
                 //go right
                 burn.rotate = -90;
-                burn.power = 4;
+                burn.power = a_int;
             }
-            0 => {
+            (a, a_int) if a < 0.0 => {
+                //go left
+                burn.rotate = 90;
+                burn.power = a_int;
+            }
+            _ => {
                 //stay put
                 burn.rotate = 0;
                 burn.power = 0;
-            }
-            ..=-1 => {
-                //go left
-                burn.rotate = 90;
-                burn.power = 4;
             }
         }
 

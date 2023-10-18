@@ -25,7 +25,7 @@ mod phys {
     }
 
     /// Calculate the velocity at time `t` given the initial velocity `v` and
-    /// constant acceleration `a`. 
+    /// constant acceleration `a`.
     pub fn kinematic_velocity(v: Vec2, a: Vec2, t: f64) -> Vec2 {
         v + a * t
     }
@@ -156,9 +156,9 @@ mod vec2 {
 #[derive(Debug)]
 struct Surface {
     vertical_distance_to_surface: f64,
-    init_data: Vec<(i32, i32)>,
+    init_data: Vec<Vec2>,
     /// The surface elevation for every x-pos, `data[x-pos] = y-pos`
-    data: Vec<i32>
+    data: Vec<f64>,
 }
 
 impl Surface {
@@ -172,90 +172,118 @@ impl Surface {
 
     /// Buildout self.data from self.init_data
     fn build_data(&mut self, init_data: Vec<Vec2>) {
-        todo!("build_data")
+        self.data = vec![0.0; 7000];
+
+        // fill self.data with the calculated surface elevation given by
+        // the points in self.init_data
+        for i in 0..init_data.len() - 1 {
+            let p1 = init_data[i];
+            let p2 = init_data[i + 1];
+
+            // calculate the slope of the line between p1 and p2
+            let m = (p2.y - p1.y) / (p2.x - p1.x);
+
+            // calculate the y-intercept of the line between p1 and p2
+            let b = p1.y - m * p1.x;
+
+            // calculate the surface elevation for every x-pos
+            for x in p1.x as usize..p2.x as usize {
+                self.data[x] = m * x as f64 + b;
+            }
+        }
+
+        //eprintln!("self.data: {:?}", self.data);
+
     }
 
     /// Find the two horizontal points that we are between. Define a line
     /// between those two points. Return the vertical distance between
     /// the line and `position`.
-    fn vert_dist_from(&self, position: Vec2) -> f64 {
-        let mut distance = Vec2::new(f64::MAX, f64::MAX);
-
-        // Find the two closest points
-
-        let mut points = self.init_data.clone();
-        points.sort_by(|a, b| a.0.cmp(&b.0));
-
-        let mut surrounding_points: [(i32, i32); 2] = [points[0], points[1]];
-
-        for point in points.iter().skip(2) {
-            if (point.0 - position.x as i32).abs()
-                < (surrounding_points[0].0 - position.x as i32).abs()
-                && point.0 as f64 <= position.x
-            {
-                surrounding_points[1] = surrounding_points[0];
-                surrounding_points[0] = *point;
-            } else if (point.0 - position.x as i32).abs()
-                < (surrounding_points[1].0 - position.x as i32).abs()
-                && point.0 as f64 >= position.x
-            {
-                surrounding_points[1] = *point;
-            }
-        }
-        // eprintln!("surrounding_points: {:#?}", surrounding_points);
-        // eprintln!(
-        //     "distance to surrounding_points[0]: {}",
-        //     Vec2::new(
-        //         surrounding_points[0].0 as f64,
-        //         surrounding_points[0].1 as f64
-        //     )
-        //     .distance_between(&position)
-        // );
-        assert!(surrounding_points.len() == 2);
-        assert!(surrounding_points[0].0 <= position.x as i32);
-        assert!(surrounding_points[1].0 >= position.x as i32);
-
-        distance.y = {
-            fn vertical_distance(p1: &Vec2, p2: &Vec2, l: &Vec2) -> f64 {
-                // Calculate the slope of the hypotenuse
-                let m = (p2.y - p1.y) / (p2.x - p1.x);
-
-                match m {
-                    m if m == 0.0 => {
-                        // If the slope is 0, then the hypotenuse is horizontal and the
-                        // vertical distance is the difference between the y-coordinate
-                        // of the hypotenuse and the y-coordinate of the intersection
-                        // point (y_I)
-                        (l.y - p1.y).abs()
-                    }
-                    _ => {
-                        // Calculate the x-coordinate of the intersection point (x_I)
-                        let x_i = (l.x / m + l.y - p1.y + m * p1.x) / (m + 1.0 / m);
-
-                        // Calculate the y-coordinate of the intersection point (y_I) using the equation of the hypotenuse
-                        let y_i = p1.y + m * (x_i - p1.x);
-
-                        // Return the absolute vertical distance
-                        (l.y - y_i).abs()
-                    }
-                }
-            }
-
-            vertical_distance(
-                &Vec2::new(
-                    surrounding_points[0].0 as f64,
-                    surrounding_points[0].1 as f64,
-                ),
-                &Vec2::new(
-                    surrounding_points[1].0 as f64,
-                    surrounding_points[1].1 as f64,
-                ),
-                &position,
-            )
-        };
-
-        distance.y
+    fn vert_dist_from(&self, position: Vec2) {
+        todo!("vert_dist_from")
     }
+
+    // / Find the two horizontal points that we are between. Define a line
+    // / between those two points. Return the vertical distance between
+    // / the line and `position`.
+    // fn vert_dist_from_old(&self, position: Vec2) -> f64 {
+    //     let mut distance = Vec2::new(f64::MAX, f64::MAX);
+
+    //     // Find the two closest points
+
+    //     let mut points = self.init_data.clone();
+    //     points.sort_by(|a, b| a.0.cmp(&b.0));
+
+    //     let mut surrounding_points: [(i32, i32); 2] = [points[0], points[1]];
+
+    //     for point in points.iter().skip(2) {
+    //         if (point.0 - position.x as i32).abs()
+    //             < (surrounding_points[0].0 - position.x as i32).abs()
+    //             && point.0 as f64 <= position.x
+    //         {
+    //             surrounding_points[1] = surrounding_points[0];
+    //             surrounding_points[0] = *point;
+    //         } else if (point.0 - position.x as i32).abs()
+    //             < (surrounding_points[1].0 - position.x as i32).abs()
+    //             && point.0 as f64 >= position.x
+    //         {
+    //             surrounding_points[1] = *point;
+    //         }
+    //     }
+    //     // eprintln!("surrounding_points: {:#?}", surrounding_points);
+    //     // eprintln!(
+    //     //     "distance to surrounding_points[0]: {}",
+    //     //     Vec2::new(
+    //     //         surrounding_points[0].0 as f64,
+    //     //         surrounding_points[0].1 as f64
+    //     //     )
+    //     //     .distance_between(&position)
+    //     // );
+    //     assert!(surrounding_points.len() == 2);
+    //     assert!(surrounding_points[0].0 <= position.x as i32);
+    //     assert!(surrounding_points[1].0 >= position.x as i32);
+
+    //     distance.y = {
+    //         fn vertical_distance(p1: &Vec2, p2: &Vec2, l: &Vec2) -> f64 {
+    //             // Calculate the slope of the hypotenuse
+    //             let m = (p2.y - p1.y) / (p2.x - p1.x);
+
+    //             match m {
+    //                 m if m == 0.0 => {
+    //                     // If the slope is 0, then the hypotenuse is horizontal and the
+    //                     // vertical distance is the difference between the y-coordinate
+    //                     // of the hypotenuse and the y-coordinate of the intersection
+    //                     // point (y_I)
+    //                     (l.y - p1.y).abs()
+    //                 }
+    //                 _ => {
+    //                     // Calculate the x-coordinate of the intersection point (x_I)
+    //                     let x_i = (l.x / m + l.y - p1.y + m * p1.x) / (m + 1.0 / m);
+
+    //                     // Calculate the y-coordinate of the intersection point (y_I) using the equation of the hypotenuse
+    //                     let y_i = p1.y + m * (x_i - p1.x);
+
+    //                     // Return the absolute vertical distance
+    //                     (l.y - y_i).abs()
+    //                 }
+    //             }
+    //         }
+
+    //         vertical_distance(
+    //             &Vec2::new(
+    //                 surrounding_points[0].0 as f64,
+    //                 surrounding_points[0].1 as f64,
+    //             ),
+    //             &Vec2::new(
+    //                 surrounding_points[1].0 as f64,
+    //                 surrounding_points[1].1 as f64,
+    //             ),
+    //             &position,
+    //         )
+    //     };
+
+    //     distance.y
+    // }
 }
 
 #[derive(Debug)]
@@ -378,7 +406,7 @@ impl Lander {
 
         //eprintln!("entering determine_target()");
 
-        let mut flat_surface_points: Vec<(i32, i32)> = Vec::new();
+        let mut flat_surface_points: Vec<Vec2> = Vec::new();
 
         flat_surface_points.append(
             &mut self
@@ -389,11 +417,11 @@ impl Lander {
                 .windows(2)
                 // Ensures that the iter will only contain points of flat surface
                 // by checking that the delta_y between two points is 0
-                .filter(|window| window[0].1 == window[1].1)
+                .filter(|window| window[0].y == window[1].y)
                 // Converts the iter of pairs to an iter of points
                 .flat_map(|window| vec![window[0], window[1]])
                 // Collects the iter of points into a Vec
-                .collect::<Vec<(i32, i32)>>(),
+                .collect::<Vec<Vec2>>(),
         );
 
         //eprintln!("flat_surface_points: {:#?}", flat_surface_points);
@@ -405,28 +433,28 @@ impl Lander {
         // 2) if not, find the closest point to the lander
         // 3) set the target
 
-        if self.position.y > flat_surface_points[0].1 as f64
-            && self.position.x >= flat_surface_points[0].0 as f64
-            && self.position.x <= flat_surface_points[1].0 as f64
+        if self.position.y > flat_surface_points[0].y
+            && self.position.x >= flat_surface_points[0].x
+            && self.position.x <= flat_surface_points[1].x
         {
-            assert!(self.position.y > flat_surface_points[0].1 as f64);
-            assert!(self.position.x <= flat_surface_points[1].0 as f64);
-            assert!(self.position.x >= flat_surface_points[0].0 as f64);
+            assert!(self.position.y > flat_surface_points[0].y);
+            assert!(self.position.x <= flat_surface_points[1].x);
+            assert!(self.position.x >= flat_surface_points[0].x);
 
             // the lander is above the flat surface
             // target is (self.position.x, flat_surface_point.y)
             self.target_position.x = self.position.x;
-            self.target_position.y = flat_surface_points[0].1 as f64;
+            self.target_position.y = flat_surface_points[0].y;
         } else {
             // we know the target y, get the closest target x
-            flat_surface_points.sort_by(|(ax, _), (bx, _)| {
-                (self.position.x as i32 - *ax)
+            flat_surface_points.sort_by(|a, b| {
+                (self.position.x as i32 - a.x as i32)
                     .abs()
-                    .cmp(&(self.position.x as i32 - *bx).abs())
+                    .cmp(&(self.position.x as i32 - b.x as i32).abs())
             });
 
-            self.target_position.x = flat_surface_points[0].0 as f64;
-            self.target_position.y = flat_surface_points[0].1 as f64;
+            self.target_position.x = flat_surface_points[0].x;
+            self.target_position.y = flat_surface_points[0].y;
         }
     }
 
@@ -470,7 +498,8 @@ impl Lander {
         let v = self.velocity;
         let mut t = t;
 
-        self.surface.vertical_distance_to_surface = self.surface.vert_dist_from(self.position);
+        //todo!("fix vert_dist_from");
+        //self.surface.vertical_distance_to_surface = self.surface.vert_dist_from(self.position);
 
         let mut thrust: Vec2 = match &mut t {
             // if time is greater than zero, calculate thrust
@@ -639,7 +668,7 @@ fn game_init(lander: &mut Lander) {
     io::stdin().read_line(&mut input_line).unwrap();
     let surface_n = parse_input!(input_line, i32);
 
-    lander.surface.init_data = vec![(-1, -1); surface_n as usize];
+    lander.surface.init_data = vec![Vec2::new(-1.0, -1.0); surface_n as usize];
 
     // the number of points used to draw the surface of Mars.
     #[allow(clippy::needless_range_loop)]
@@ -649,10 +678,11 @@ fn game_init(lander: &mut Lander) {
         let inputs = input_line.split(' ').collect::<Vec<_>>();
         let land_x = parse_input!(inputs[0], i32); // X coordinate of a surface point. (0 to 6999)
         let land_y = parse_input!(inputs[1], i32); // Y coordinate of a surface point. By linking all the points together in a sequential fashion, you form the surface of Mars.
-        (lander.surface.init_data[i].0, lander.surface.init_data[i].1) = (land_x, land_y);
+        (lander.surface.init_data[i].x, lander.surface.init_data[i].y) =
+            (land_x as f64, land_y as f64);
     }
 
-    // eprintln!("surface_data: {:#?}", surface_data);
+    lander.surface.build_data(lander.surface.init_data.clone());
 }
 
 fn game_loop(lander: &mut Lander) {
@@ -670,7 +700,7 @@ fn game_loop(lander: &mut Lander) {
         // get commands
         println!("{}", lander.get_commands());
 
-        eprintln!("lander: {:#?}", lander);
+        //eprintln!("lander: {:#?}", lander);
 
         //increment time
         lander.time += 1;

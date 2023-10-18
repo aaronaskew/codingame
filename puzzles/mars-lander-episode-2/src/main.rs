@@ -1,6 +1,10 @@
 #![allow(unused)]
+use phys::*;
+use std::arch::x86_64::_CMP_TRUE_UQ;
+use std::collections::HashMap;
 use std::f64::consts::PI;
 use std::io;
+use std::process::{exit, ExitCode};
 use vec2::*;
 
 macro_rules! parse_input {
@@ -10,6 +14,28 @@ macro_rules! parse_input {
 }
 
 static ACCELERATION_DUE_TO_GRAVITY: Vec2 = Vec2 { x: 0.0, y: -3.711 };
+
+mod phys {
+    use crate::vec2::Vec2;
+
+    /// Calculate the position at time `t` given the initial position `p`,
+    /// initial velocity `v`, and constant acceleration `a`.
+    pub fn kinematic_position(p: Vec2, v: Vec2, a: Vec2, t: f64) -> Vec2 {
+        p + v * t + 0.5 * a * t * t
+    }
+
+    /// Calculate the velocity at time `t` given the initial velocity `v` and
+    /// constant acceleration `a`. 
+    pub fn kinematic_velocity(v: Vec2, a: Vec2, t: f64) -> Vec2 {
+        v + a * t
+    }
+
+    /// Calculate the acceleration needed to go from `p` to `tp` in `t` seconds
+    /// given the initial velocity `v`.
+    pub fn kinematic_acceleration(tp: Vec2, p: Vec2, v: Vec2, t: f64) -> Vec2 {
+        2.0 * (tp - p - v * t) / (t * t)
+    }
+}
 
 mod vec2 {
     use std::f64::consts::PI;
@@ -130,26 +156,34 @@ mod vec2 {
 #[derive(Debug)]
 struct Surface {
     vertical_distance_to_surface: f64,
-    data: Vec<(i32, i32)>,
+    init_data: Vec<(i32, i32)>,
+    /// The surface elevation for every x-pos, `data[x-pos] = y-pos`
+    data: Vec<i32>
 }
 
 impl Surface {
     fn new() -> Self {
         Self {
             vertical_distance_to_surface: 0.0,
+            init_data: Vec::new(),
             data: Vec::new(),
         }
+    }
+
+    /// Buildout self.data from self.init_data
+    fn build_data(&mut self, init_data: Vec<Vec2>) {
+        todo!("build_data")
     }
 
     /// Find the two horizontal points that we are between. Define a line
     /// between those two points. Return the vertical distance between
     /// the line and `position`.
-    fn distance_to_surface(&self, position: Vec2) -> f64 {
+    fn vert_dist_from(&self, position: Vec2) -> f64 {
         let mut distance = Vec2::new(f64::MAX, f64::MAX);
 
         // Find the two closest points
 
-        let mut points = self.data.clone();
+        let mut points = self.init_data.clone();
         points.sort_by(|a, b| a.0.cmp(&b.0));
 
         let mut surrounding_points: [(i32, i32); 2] = [points[0], points[1]];
@@ -349,7 +383,7 @@ impl Lander {
         flat_surface_points.append(
             &mut self
                 .surface
-                .data
+                .init_data
                 .clone()
                 // Gets pairs at a time from surface
                 .windows(2)
@@ -431,38 +465,104 @@ impl Lander {
     /// Returns the thrust as a Vec2 in thrust-space coordinates and clamped to
     /// the allowed values of the thruster.
     fn calculate_thrust(&mut self, t: f64) -> Vec2 {
-        let tp = self.target_position;
+        let mut thrust_tgt_pos: Vec2;
         let p = self.position;
         let v = self.velocity;
+        let mut t = t;
 
-        self.surface.vertical_distance_to_surface = self.surface.distance_to_surface(self.position);
+        self.surface.vertical_distance_to_surface = self.surface.vert_dist_from(self.position);
 
-        let mut thrust = match t {
+        let mut thrust: Vec2 = match &mut t {
             // if time is greater than zero, calculate thrust
-            t if t > 0.0 => {
-                let mut target_accel = 2.0 * (tp - p - v * t) / (t * t);
+            t if *t > 0.0 => {
+                // start with the target position as our target
+                thrust_tgt_pos = self.target_position;
 
-                // add our current acceleration
-                target_accel = target_accel + self.acceleration;
+                let mut target_accel = Vec2::new(0.0, 0.0);
 
-                
+                #[derive(Debug, PartialEq)]
+                enum SanityCheckFailure {
+                    WouldCrash,
+                    TooFastWhenLanding,
+                    WouldRunOutOfFuel,
+                    None,
+                }
 
-                // eprintln!(
-                //     "accel: the acceleration computed to go from position to target_position"
-                // );
-                // eprintln!("\taccel init:     {:?}", target_accel);
+                let mut failure = SanityCheckFailure::None;
+                let mut failed = false;
 
-                // prevent downward thrust
-                target_accel.y = target_accel.y.clamp(0.0, 4.0);
-                // eprintln!("\taccel-no ↓:     {:?}", target_accel);
+                // loop until we pass all sanity checks, adjusting the thrust_tgt_pos
+                // and t as needed
+                loop {
+                    match (&mut failed, &mut failure) {
+                        (false, _) => {
+                            target_accel = kinematic_acceleration(thrust_tgt_pos, p, v, *t);
 
-                target_accel.clamp_magnitude(0.0, 4.0);
-                // eprintln!("\taccel-clmp mag: {:?}", target_accel);
+                            // add our current acceleration
+                            target_accel = target_accel + self.acceleration;
+
+                            // prevent downward thrust
+                            target_accel.y = target_accel.y.clamp(0.0, 4.0);
+                            // eprintln!("\taccel-no ↓:     {:?}", target_accel);
+
+                            target_accel.clamp_magnitude(0.0, 4.0);
+                            // eprintln!("\taccel-clmp mag: {:?}", target_accel);
+
+                            // check if we are going to crash into the ground
+                            // if new position determined by the kinematic equation is below the
+                            // surface, then we are going to crash
+                            // ====================================================================
+                            // {
+                            //     let new_position = kinematic_position(p, v, target_accel, *t);
+                            //     if new_position.y < self.surface.vert_dist_from(new_position) {
+                            //         failed = true;
+                            //         failure = SanityCheckFailure::WouldCrash;
+
+                            //         eprintln!(
+                            //             "WouldCrash:\ntp: {:?} p: {:?} v: {:?} a: {:?} t: {}",
+                            //             thrust_tgt_pos, p, v, target_accel, t
+                            //         );
+
+                            //         continue;
+                            //     }
+                            // }
+
+                            // do more checks
+
+                            // if everything looks good, then break out of the loop
+                            break;
+                        }
+                        (true, SanityCheckFailure::WouldCrash) => {
+                            //eprintln!("WouldCrash: tp: {:?}", thrust_tgt_pos);
+
+                            // fix crash
+
+                            // if we are going to crash, then we need to adjust the target
+                            // position to be above the surface
+                            //thrust_tgt_pos.y *= 1.5;
+                            thrust_tgt_pos.y = self.position.y;
+
+                            failed = false;
+                            failure = SanityCheckFailure::None;
+                            continue;
+                        }
+                        (true, SanityCheckFailure::TooFastWhenLanding) => todo!(),
+                        (true, SanityCheckFailure::WouldRunOutOfFuel) => todo!(),
+                        (true, SanityCheckFailure::None) => exit(1),
+                    }
+
+                    assert!(!failed);
+                    assert!(failure == SanityCheckFailure::None);
+
+                    // eprintln!(
+                    //     "accel: the acceleration computed to go from position to target_position"
+                    // );
+                    // eprintln!("\taccel init:     {:?}", target_accel);
+                }
 
                 //convert to thrust space
                 target_accel = target_accel.rotate(-90.0);
                 // eprintln!("\taccel thr sp:   {:?}", target_accel);
-
                 target_accel
             }
             _ => Vec2::new(0.0, 0.0),
@@ -539,7 +639,7 @@ fn game_init(lander: &mut Lander) {
     io::stdin().read_line(&mut input_line).unwrap();
     let surface_n = parse_input!(input_line, i32);
 
-    lander.surface.data = vec![(-1, -1); surface_n as usize];
+    lander.surface.init_data = vec![(-1, -1); surface_n as usize];
 
     // the number of points used to draw the surface of Mars.
     #[allow(clippy::needless_range_loop)]
@@ -549,7 +649,7 @@ fn game_init(lander: &mut Lander) {
         let inputs = input_line.split(' ').collect::<Vec<_>>();
         let land_x = parse_input!(inputs[0], i32); // X coordinate of a surface point. (0 to 6999)
         let land_y = parse_input!(inputs[1], i32); // Y coordinate of a surface point. By linking all the points together in a sequential fashion, you form the surface of Mars.
-        (lander.surface.data[i].0, lander.surface.data[i].1) = (land_x, land_y);
+        (lander.surface.init_data[i].0, lander.surface.init_data[i].1) = (land_x, land_y);
     }
 
     // eprintln!("surface_data: {:#?}", surface_data);

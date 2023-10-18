@@ -158,7 +158,14 @@ struct Surface {
     vertical_distance_to_surface: f64,
     init_data: Vec<Vec2>,
     /// The surface elevation for every x-pos, `data[x-pos] = y-pos`
-    data: Vec<f64>,
+    data: Vec<SurfaceDataPoint>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct SurfaceDataPoint {
+    x: f64,
+    y: f64,
+    m: f64,
 }
 
 impl Surface {
@@ -172,7 +179,14 @@ impl Surface {
 
     /// Buildout self.data from self.init_data
     fn build_data(&mut self, init_data: Vec<Vec2>) {
-        self.data = vec![0.0; 7000];
+        self.data = vec![
+            SurfaceDataPoint {
+                x: 0.0,
+                y: 0.0,
+                m: 0.0
+            };
+            7000
+        ];
 
         // fill self.data with the calculated surface elevation given by
         // the points in self.init_data
@@ -188,102 +202,26 @@ impl Surface {
 
             // calculate the surface elevation for every x-pos
             for x in p1.x as usize..p2.x as usize {
-                self.data[x] = m * x as f64 + b;
+                let y = m * x as f64 + b;
+                self.data[x] = SurfaceDataPoint { x: x as f64, y, m };
             }
         }
 
-        //eprintln!("self.data: {:?}", self.data);
-
+        //eprintln!("self.data: {:#?}", self.data);
     }
 
-    /// Find the two horizontal points that we are between. Define a line
-    /// between those two points. Return the vertical distance between
-    /// the line and `position`.
-    fn vert_dist_from(&self, position: Vec2) {
-        todo!("vert_dist_from")
+    fn vert_distance(&self, position: Vec2) -> Option<f64> {
+        match position.x as usize {
+            x if x >= self.data.len() => None,
+            _ => Some(position.y.floor() - self.data[position.x as usize].y.ceil()),
+        }
     }
 
-    // / Find the two horizontal points that we are between. Define a line
-    // / between those two points. Return the vertical distance between
-    // / the line and `position`.
-    // fn vert_dist_from_old(&self, position: Vec2) -> f64 {
-    //     let mut distance = Vec2::new(f64::MAX, f64::MAX);
-
-    //     // Find the two closest points
-
-    //     let mut points = self.init_data.clone();
-    //     points.sort_by(|a, b| a.0.cmp(&b.0));
-
-    //     let mut surrounding_points: [(i32, i32); 2] = [points[0], points[1]];
-
-    //     for point in points.iter().skip(2) {
-    //         if (point.0 - position.x as i32).abs()
-    //             < (surrounding_points[0].0 - position.x as i32).abs()
-    //             && point.0 as f64 <= position.x
-    //         {
-    //             surrounding_points[1] = surrounding_points[0];
-    //             surrounding_points[0] = *point;
-    //         } else if (point.0 - position.x as i32).abs()
-    //             < (surrounding_points[1].0 - position.x as i32).abs()
-    //             && point.0 as f64 >= position.x
-    //         {
-    //             surrounding_points[1] = *point;
-    //         }
-    //     }
-    //     // eprintln!("surrounding_points: {:#?}", surrounding_points);
-    //     // eprintln!(
-    //     //     "distance to surrounding_points[0]: {}",
-    //     //     Vec2::new(
-    //     //         surrounding_points[0].0 as f64,
-    //     //         surrounding_points[0].1 as f64
-    //     //     )
-    //     //     .distance_between(&position)
-    //     // );
-    //     assert!(surrounding_points.len() == 2);
-    //     assert!(surrounding_points[0].0 <= position.x as i32);
-    //     assert!(surrounding_points[1].0 >= position.x as i32);
-
-    //     distance.y = {
-    //         fn vertical_distance(p1: &Vec2, p2: &Vec2, l: &Vec2) -> f64 {
-    //             // Calculate the slope of the hypotenuse
-    //             let m = (p2.y - p1.y) / (p2.x - p1.x);
-
-    //             match m {
-    //                 m if m == 0.0 => {
-    //                     // If the slope is 0, then the hypotenuse is horizontal and the
-    //                     // vertical distance is the difference between the y-coordinate
-    //                     // of the hypotenuse and the y-coordinate of the intersection
-    //                     // point (y_I)
-    //                     (l.y - p1.y).abs()
-    //                 }
-    //                 _ => {
-    //                     // Calculate the x-coordinate of the intersection point (x_I)
-    //                     let x_i = (l.x / m + l.y - p1.y + m * p1.x) / (m + 1.0 / m);
-
-    //                     // Calculate the y-coordinate of the intersection point (y_I) using the equation of the hypotenuse
-    //                     let y_i = p1.y + m * (x_i - p1.x);
-
-    //                     // Return the absolute vertical distance
-    //                     (l.y - y_i).abs()
-    //                 }
-    //             }
-    //         }
-
-    //         vertical_distance(
-    //             &Vec2::new(
-    //                 surrounding_points[0].0 as f64,
-    //                 surrounding_points[0].1 as f64,
-    //             ),
-    //             &Vec2::new(
-    //                 surrounding_points[1].0 as f64,
-    //                 surrounding_points[1].1 as f64,
-    //             ),
-    //             &position,
-    //         )
-    //     };
-
-    //     distance.y
-    // }
+    /// Returns true if the lander is over a landing pad by checking if the
+    /// slope of the surface at the lander's position is 0.
+    fn over_landing_pad(&self, position: Vec2) -> bool {
+        self.data[position.x as usize].m == 0.0
+    }
 }
 
 #[derive(Debug)]
@@ -351,6 +289,34 @@ impl Lander {
         let power_cmd = self.active_burn.power;
 
         format!("{} {}", rotate_cmd, power_cmd).to_string()
+    }
+
+    fn status(&self) -> String {
+        format!(
+            "time: {}\n\
+            position: {:?}\n\
+            rotation: {}\n\
+            velocity: {:?}\n\
+            acceleration: {:?}\n\
+            thrust_angle: {}\n\
+            thrust_power: {}\n\
+            fuel: {}\n\
+            target_position: {:?}\n\
+            active_burn: {:?}\n\
+            vertical_distance_to_serface: {}",
+            self.time,
+            self.position,
+            self.rotation,
+            self.velocity,
+            self.acceleration,
+            self.thrust_angle,
+            self.thrust_power,
+            self.fuel,
+            self.target_position,
+            self.active_burn,
+            self.surface.vertical_distance_to_surface.ceil(),
+        )
+        .to_string()
     }
 
     /// Do the physics calculations every tick and set the commands for the
@@ -499,7 +465,8 @@ impl Lander {
         let mut t = t;
 
         //todo!("fix vert_dist_from");
-        //self.surface.vertical_distance_to_surface = self.surface.vert_dist_from(self.position);
+        self.surface.vertical_distance_to_surface =
+            self.surface.vert_distance(self.position).unwrap();
 
         let mut thrust: Vec2 = match &mut t {
             // if time is greater than zero, calculate thrust
@@ -541,20 +508,30 @@ impl Lander {
                             // if new position determined by the kinematic equation is below the
                             // surface, then we are going to crash
                             // ====================================================================
-                            // {
-                            //     let new_position = kinematic_position(p, v, target_accel, *t);
-                            //     if new_position.y < self.surface.vert_dist_from(new_position) {
-                            //         failed = true;
-                            //         failure = SanityCheckFailure::WouldCrash;
+                            {
+                                let new_position = kinematic_position(p, v, target_accel, *t);
+                                if self.surface.vert_distance(new_position).unwrap() < 1.0
+                                    && !self.surface.over_landing_pad(new_position)
+                                {
+                                    failed = true;
+                                    failure = SanityCheckFailure::WouldCrash;
 
-                            //         eprintln!(
-                            //             "WouldCrash:\ntp: {:?} p: {:?} v: {:?} a: {:?} t: {}",
-                            //             thrust_tgt_pos, p, v, target_accel, t
-                            //         );
+                                    eprintln!(
+                                        "WouldCrash:\nvert_dist(tp): {} tp: {:?}\n\t\
+                                        SurfaceData: {:?}\n\t\
+                                        p: {:?} v: {:?} a: {:?} t: {}",
+                                        self.surface.vert_distance(new_position).unwrap(),
+                                        thrust_tgt_pos,
+                                        self.surface.data[new_position.x as usize],
+                                        p,
+                                        v,
+                                        target_accel,
+                                        t
+                                    );
 
-                            //         continue;
-                            //     }
-                            // }
+                                    continue;
+                                }
+                            }
 
                             // do more checks
 
@@ -570,6 +547,8 @@ impl Lander {
                             // position to be above the surface
                             //thrust_tgt_pos.y *= 1.5;
                             thrust_tgt_pos.y = self.position.y;
+
+                            eprintln!("WouldCrash: use tp: {:?} instead", thrust_tgt_pos);
 
                             failed = false;
                             failure = SanityCheckFailure::None;
@@ -685,7 +664,7 @@ fn game_init(lander: &mut Lander) {
     lander.surface.build_data(lander.surface.init_data.clone());
 }
 
-fn game_loop(lander: &mut Lander) {
+fn game_loop(lander: &mut Lander) -> ! {
     // game loop
 
     loop {
@@ -700,7 +679,7 @@ fn game_loop(lander: &mut Lander) {
         // get commands
         println!("{}", lander.get_commands());
 
-        //eprintln!("lander: {:#?}", lander);
+        eprintln!("lander: {}", lander.status());
 
         //increment time
         lander.time += 1;

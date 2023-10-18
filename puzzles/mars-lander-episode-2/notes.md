@@ -1,5 +1,5 @@
 - [ ] Prevent crashing into ground
-    - [ ] Create a ground checker
+    - [*] Create a ground checker
     - [ ] Determine method of staying aloft until landing
 - [ ] Prevent speed being out of limit when landing
 - [ ] Need a better solution than hardcoding the time variable. 

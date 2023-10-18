@@ -69,6 +69,11 @@ mod vec2 {
                 y: self.x * sin_theta + self.y * cos_theta,
             }
         }
+
+        pub fn distance_between(&self, other: &Vec2) -> f64 {
+            ((self.x - other.x) * (self.x - other.x) + (self.y - other.y) * (self.y - other.y))
+                .sqrt()
+        }
     }
     impl Add for Vec2 {
         type Output = Self;
@@ -124,12 +129,98 @@ mod vec2 {
 
 #[derive(Debug)]
 struct Surface {
+    vertical_distance_to_surface: f64,
     data: Vec<(i32, i32)>,
 }
 
 impl Surface {
     fn new() -> Self {
-        Self { data: Vec::new() }
+        Self {
+            vertical_distance_to_surface: 0.0,
+            data: Vec::new(),
+        }
+    }
+
+    /// Find the two horizontal points that we are between. Define a line
+    /// between those two points. Return the vertical distance between
+    /// the line and `position`.
+    fn distance_to_surface(&self, position: Vec2) -> f64 {
+        let mut distance = Vec2::new(f64::MAX, f64::MAX);
+
+        // Find the two closest points
+
+        let mut points = self.data.clone();
+        points.sort_by(|a, b| a.0.cmp(&b.0));
+
+        let mut surrounding_points: [(i32, i32); 2] = [points[0], points[1]];
+
+        for point in points.iter().skip(2) {
+            if (point.0 - position.x as i32).abs()
+                < (surrounding_points[0].0 - position.x as i32).abs()
+                && point.0 as f64 <= position.x
+            {
+                surrounding_points[1] = surrounding_points[0];
+                surrounding_points[0] = *point;
+            } else if (point.0 - position.x as i32).abs()
+                < (surrounding_points[1].0 - position.x as i32).abs()
+                && point.0 as f64 >= position.x
+            {
+                surrounding_points[1] = *point;
+            }
+        }
+        // eprintln!("surrounding_points: {:#?}", surrounding_points);
+        // eprintln!(
+        //     "distance to surrounding_points[0]: {}",
+        //     Vec2::new(
+        //         surrounding_points[0].0 as f64,
+        //         surrounding_points[0].1 as f64
+        //     )
+        //     .distance_between(&position)
+        // );
+        assert!(surrounding_points.len() == 2);
+        assert!(surrounding_points[0].0 <= position.x as i32);
+        assert!(surrounding_points[1].0 >= position.x as i32);
+
+        distance.y = {
+            fn vertical_distance(p1: &Vec2, p2: &Vec2, l: &Vec2) -> f64 {
+                // Calculate the slope of the hypotenuse
+                let m = (p2.y - p1.y) / (p2.x - p1.x);
+
+                match m {
+                    m if m == 0.0 => {
+                        // If the slope is 0, then the hypotenuse is horizontal and the
+                        // vertical distance is the difference between the y-coordinate
+                        // of the hypotenuse and the y-coordinate of the intersection
+                        // point (y_I)
+                        (l.y - p1.y).abs()
+                    }
+                    _ => {
+                        // Calculate the x-coordinate of the intersection point (x_I)
+                        let x_i = (l.x / m + l.y - p1.y + m * p1.x) / (m + 1.0 / m);
+
+                        // Calculate the y-coordinate of the intersection point (y_I) using the equation of the hypotenuse
+                        let y_i = p1.y + m * (x_i - p1.x);
+
+                        // Return the absolute vertical distance
+                        (l.y - y_i).abs()
+                    }
+                }
+            }
+
+            vertical_distance(
+                &Vec2::new(
+                    surrounding_points[0].0 as f64,
+                    surrounding_points[0].1 as f64,
+                ),
+                &Vec2::new(
+                    surrounding_points[1].0 as f64,
+                    surrounding_points[1].1 as f64,
+                ),
+                &position,
+            )
+        };
+
+        distance.y
     }
 }
 
@@ -203,7 +294,6 @@ impl Lander {
     /// Do the physics calculations every tick and set the commands for the
     /// next turn.
     fn physics_update(&mut self) {
-
         // set acceleration
         //   acceleration due to thrust + gravity
 
@@ -248,7 +338,7 @@ impl Lander {
     ///    - the vx of the lander is or near 0. If vx is not near 0, then the lander
     ///     should account for the projected position of the lander when determining
     ///     the distance function
-    fn determine_target(&mut self, surface_data: &mut [(i32, i32)]) {
+    fn determine_target(&mut self) {
         assert!(self.position.x != -1.0 && self.position.y != -1.0);
         assert!(self.target_position.x == -1.0 && self.target_position.y == -1.0);
 
@@ -257,7 +347,10 @@ impl Lander {
         let mut flat_surface_points: Vec<(i32, i32)> = Vec::new();
 
         flat_surface_points.append(
-            &mut surface_data
+            &mut self
+                .surface
+                .data
+                .clone()
                 // Gets pairs at a time from surface
                 .windows(2)
                 // Ensures that the iter will only contain points of flat surface
@@ -337,40 +430,38 @@ impl Lander {
     ///
     /// Returns the thrust as a Vec2 in thrust-space coordinates and clamped to
     /// the allowed values of the thruster.
-    fn calculate_thrust(&self, t: f64) -> Vec2 {
+    fn calculate_thrust(&mut self, t: f64) -> Vec2 {
         let tp = self.target_position;
         let p = self.position;
         let v = self.velocity;
+
+        self.surface.vertical_distance_to_surface = self.surface.distance_to_surface(self.position);
 
         let mut thrust = match t {
             // if time is greater than zero, calculate thrust
             t if t > 0.0 => {
                 let mut target_accel = 2.0 * (tp - p - v * t) / (t * t);
 
-                // add to our current acceleration
+                // add our current acceleration
                 target_accel = target_accel + self.acceleration;
 
-                eprintln!(
-                    "accel: the acceleration computed to go from position to target_position"
-                );
-                eprintln!("\taccel init:     {:?}", target_accel);
+                
 
-                // eprintln!("\tgravity:        {:?}", ACCELERATION_DUE_TO_GRAVITY);
-                // account for gravity
-                //accel = accel - ACCELERATION_DUE_TO_GRAVITY;
-
-                //eprintln!("\taccel-grav:     {:?}", accel);
+                // eprintln!(
+                //     "accel: the acceleration computed to go from position to target_position"
+                // );
+                // eprintln!("\taccel init:     {:?}", target_accel);
 
                 // prevent downward thrust
                 target_accel.y = target_accel.y.clamp(0.0, 4.0);
-                eprintln!("\taccel-no ↓:     {:?}", target_accel);
+                // eprintln!("\taccel-no ↓:     {:?}", target_accel);
 
                 target_accel.clamp_magnitude(0.0, 4.0);
-                eprintln!("\taccel-clmp mag: {:?}", target_accel);
+                // eprintln!("\taccel-clmp mag: {:?}", target_accel);
 
                 //convert to thrust space
                 target_accel = target_accel.rotate(-90.0);
-                eprintln!("\taccel thr sp:   {:?}", target_accel);
+                // eprintln!("\taccel thr sp:   {:?}", target_accel);
 
                 target_accel
             }
@@ -439,18 +530,16 @@ fn main() {
         surface: Surface::new(),
     };
 
-    let mut surface_data: Vec<(i32, i32)> = vec![];
-
-    game_init(&mut surface_data);
-    game_loop(&mut lander, &mut surface_data);
+    game_init(&mut lander);
+    game_loop(&mut lander);
 }
 
-fn game_init(surface_data: &mut Vec<(i32, i32)>) {
+fn game_init(lander: &mut Lander) {
     let mut input_line = String::new();
     io::stdin().read_line(&mut input_line).unwrap();
     let surface_n = parse_input!(input_line, i32);
 
-    *surface_data = vec![(-1, -1); surface_n as usize];
+    lander.surface.data = vec![(-1, -1); surface_n as usize];
 
     // the number of points used to draw the surface of Mars.
     #[allow(clippy::needless_range_loop)]
@@ -460,20 +549,20 @@ fn game_init(surface_data: &mut Vec<(i32, i32)>) {
         let inputs = input_line.split(' ').collect::<Vec<_>>();
         let land_x = parse_input!(inputs[0], i32); // X coordinate of a surface point. (0 to 6999)
         let land_y = parse_input!(inputs[1], i32); // Y coordinate of a surface point. By linking all the points together in a sequential fashion, you form the surface of Mars.
-        (surface_data[i].0, surface_data[i].1) = (land_x, land_y);
+        (lander.surface.data[i].0, lander.surface.data[i].1) = (land_x, land_y);
     }
 
     // eprintln!("surface_data: {:#?}", surface_data);
 }
 
-fn game_loop(lander: &mut Lander, surface_data: &mut [(i32, i32)]) {
+fn game_loop(lander: &mut Lander) {
     // game loop
 
     loop {
         read_lander_data(lander);
 
         if lander.target_position.x == -1.0 && lander.target_position.y == -1.0 {
-            lander.determine_target(surface_data);
+            lander.determine_target();
         }
 
         lander.physics_update();

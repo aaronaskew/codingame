@@ -1,11 +1,11 @@
 #![allow(unused)]
-use phys::*;
 use std::arch::x86_64::_CMP_TRUE_UQ;
 use std::collections::HashMap;
 use std::f64::consts::PI;
 use std::io;
 use std::process::{exit, ExitCode};
 use vec2::*;
+use phys::*;
 
 macro_rules! parse_input {
     ($x:expr, $t:ident) => {
@@ -13,7 +13,7 @@ macro_rules! parse_input {
     };
 }
 
-static ACCELERATION_DUE_TO_GRAVITY: Vec2 = Vec2 { x: 0.0, y: -3.711 };
+static MARTIAN_GRAVITY: Vec2 = Vec2 { x: 0.0, y: -3.711 };
 
 mod phys {
     use crate::vec2::Vec2;
@@ -159,9 +159,10 @@ struct Surface {
     init_data: Vec<Vec2>,
     /// The surface elevation for every x-pos, `data[x-pos] = y-pos`
     data: Vec<SurfaceDataPoint>,
+    landing_pad: HashMap<i32, SurfaceDataPoint>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 struct SurfaceDataPoint {
     x: f64,
     y: f64,
@@ -174,10 +175,11 @@ impl Surface {
             vertical_distance_to_surface: 0.0,
             init_data: Vec::new(),
             data: Vec::new(),
+            landing_pad: HashMap::new(),
         }
     }
 
-    /// Buildout self.data from self.init_data
+    /// Buildout self.data from self.init_data & generate self.landing_pad
     fn build_data(&mut self, init_data: Vec<Vec2>) {
         self.data = vec![
             SurfaceDataPoint {
@@ -206,6 +208,13 @@ impl Surface {
                 self.data[x] = SurfaceDataPoint { x: x as f64, y, m };
             }
         }
+
+        // Generate self.landing_pad
+        let mut landing_pad: std::collections::HashMap<i32, SurfaceDataPoint> = HashMap::new();
+
+        self.data.iter().filter(|&p| p.m == 0.0).for_each(|&p| {
+            landing_pad.insert(p.x as i32, p);
+        });
 
         //eprintln!("self.data: {:#?}", self.data);
     }
@@ -335,7 +344,7 @@ impl Lander {
                     * (Burn::thrust_to_world_rot(self.thrust_angle) as f64)
                         .to_radians()
                         .cos(),
-            ) + ACCELERATION_DUE_TO_GRAVITY
+            ) + MARTIAN_GRAVITY
         };
 
         let mut burn = Burn::new();
@@ -359,69 +368,21 @@ impl Lander {
     }
 
     /// Take the `surface` data and use that to set the target location
-    /// find target such that the landing surface is flat (delta_y between two points is 0)
-    /// and is the closest possible point that is on one of the flat surfaces
-    ///
-    /// Assumptions:
-    ///    - the vx of the lander is or near 0. If vx is not near 0, then the lander
-    ///     should account for the projected position of the lander when determining
-    ///     the distance function
-    fn determine_target(&mut self) {
-        assert!(self.position.x != -1.0 && self.position.y != -1.0);
-        assert!(self.target_position.x == -1.0 && self.target_position.y == -1.0);
+    /// find target such that the landing surface is flat
+    fn set_target_position(&mut self) {
 
-        //eprintln!("entering determine_target()");
+        let pad = &self.surface.landing_pad;
+        // get the min and max key values in landing_pad
+        let min = self.surface.landing_pad.keys().min().unwrap();
+        let max = self.surface.landing_pad.keys().max().unwrap();
 
-        let mut flat_surface_points: Vec<Vec2> = Vec::new();
+        // get the middle point between the min and max
+        let middle = (min + max) / 2;
 
-        flat_surface_points.append(
-            &mut self
-                .surface
-                .init_data
-                .clone()
-                // Gets pairs at a time from surface
-                .windows(2)
-                // Ensures that the iter will only contain points of flat surface
-                // by checking that the delta_y between two points is 0
-                .filter(|window| window[0].y == window[1].y)
-                // Converts the iter of pairs to an iter of points
-                .flat_map(|window| vec![window[0], window[1]])
-                // Collects the iter of points into a Vec
-                .collect::<Vec<Vec2>>(),
-        );
+        // get the surface data point at the middle
+        let middle_point = pad.get(&middle).unwrap();
 
-        //eprintln!("flat_surface_points: {:#?}", flat_surface_points);
-
-        assert!(flat_surface_points.len() == 2);
-
-        // find the closest point to the lander
-        // 1) check if the lander is directly above a flat surface point
-        // 2) if not, find the closest point to the lander
-        // 3) set the target
-
-        if self.position.y > flat_surface_points[0].y
-            && self.position.x >= flat_surface_points[0].x
-            && self.position.x <= flat_surface_points[1].x
-        {
-            assert!(self.position.y > flat_surface_points[0].y);
-            assert!(self.position.x <= flat_surface_points[1].x);
-            assert!(self.position.x >= flat_surface_points[0].x);
-
-            // the lander is above the flat surface
-            // target is (self.position.x, flat_surface_point.y)
-            self.target_position.x = self.position.x;
-            self.target_position.y = flat_surface_points[0].y;
-        } else {
-            // we know the target y, get the closest target x
-            flat_surface_points.sort_by(|a, b| {
-                (self.position.x as i32 - a.x as i32)
-                    .abs()
-                    .cmp(&(self.position.x as i32 - b.x as i32).abs())
-            });
-
-            self.target_position.x = flat_surface_points[0].x;
-            self.target_position.y = flat_surface_points[0].y;
-        }
+        self.target_position = Vec2::new(middle_point.x, middle_point.y);
     }
 
     fn time_of_burn_for_x(v: f64, a: f64) -> i32 {
@@ -671,7 +632,7 @@ fn game_loop(lander: &mut Lander) -> ! {
         read_lander_data(lander);
 
         if lander.target_position.x == -1.0 && lander.target_position.y == -1.0 {
-            lander.determine_target();
+            lander.set_target_position();
         }
 
         lander.physics_update();

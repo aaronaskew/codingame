@@ -1,4 +1,4 @@
 [workspace]
-members = ["./**/src/.."]
+members = ["./**/src/..", "puzzles/unary"]
 exclude = [".git"]
 resolver = "2"
